@@ -2,6 +2,8 @@ library(readxl)
 library(ggplot2)
 library(Hmisc)
 library(dplyr)
+library(table1)
+library(stargazer)
 
 setwd("/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019")
 
@@ -49,24 +51,31 @@ m.outcomes$filter <- as.factor(as.character(m.outcomes$filter))
 
 m.outcomes$filter == m.determinants$Filter_ID
 #they are all the same and in the same order, I can mush them together. 
-
-m.data <- data.frame(f.id = m.determinants$Filter_ID, bc_conc = m.outcomes[ , 26], uvpm_conc = m.outcomes[ , 27], m.determinants[ , -1])
-m.data
+as.numeric(m.outcomes[ , 27])
+as.numeric(as.character(m.outcomes[ , 27]))
+m.data <- data.frame(f.id = m.determinants$Filter_ID, bc_conc = m.outcomes[ , 26], uvpm_conc = as.numeric(as.character(m.outcomes[ , 27])), m.determinants[ , -1])
+head(m.data)
 str(m.data)
-#note that uvpm_conc is a factor because it has some words in there. I'll sort that out later
+#note that uvpm_conc was a factor and I changed to numeric. Blank and "too dark" entries are now NA.
 #note: majrd and mjrd are same categories
 #note: no bus_stop_50m category
 #Note: NPRI_PM25_1000m vs NPRI_PM_750m
 #note:  Missing NPRI_Nox_100m and 50m
 #note: missing pop_300m, 200m, 100m, and 50m
-
-#standardizing the determinants/predictor variables.
-m.data.stan <- m.data
+#note: MTL_space_23 has a huge BC and UVPM values
+#what other info from the outcomes should I keep in the data frame?
 
 #take a quick gander at some of the distributions
 hist(m.data$bc_conc, breaks = 100)
 hist(m.data$bc_conc, breaks = 100, xlim = c(0, 3000))
-#some really big values, even some out at 30k. Looks normallish under 3000
+#One out at 30k (MTL_space_23). Looks normallish under 3000. 
+
+hist(m.data$uvpm_conc, breaks = 100)
+hist(m.data$bc_conc, breaks = 100, xlim = c(0, 3000))
+#One out at 22k (MTL_space_23). Looks normallish under 3000. 
+describe(m.data$uvpm_conc)
+describe(m.data$bc_conc)
+
 
 hist(m.data$build_1000m)
 hist(m.data$build_750m)
@@ -217,3 +226,85 @@ hist(m.data$pop_500m)
 hist(m.data$rail_1000m)
 hist(m.data$rail_500m)
 hist(m.data$rail_50m)
+
+colnames(m.data)[c(-1,-2,-3)]
+
+#time to standardize it
+#this is how to standardize just part of the data frame
+summary(scale(m.data[ , c(-1,-2,-3)]))
+m.data.stan <- data.frame(m.data[ , 1:3], scale(m.data.stan[ , c(-1,-2,-3)]))
+summary(m.data.stan)
+#can see in the summary that all the means are zero
+apply(m.data.stan, 2, sd)
+#can see all the sds are 1. Noice.
+
+m.data.stan <- as_tibble(m.data.stan)
+
+library(purrr)
+library(reshape)
+library(broom)
+library(tidyverse)
+long.m.data.stan <- melt(m.data.stan, id.vars = c("f.id", "bc_conc", "uvpm_conc"))
+
+#trying out this: https://datascienceplus.com/how-to-do-regression-analysis-for-multiple-independent-or-dependent-variables/
+#check to make sure nothing is too squirrelly
+summary(long.m.data.stan)
+nrow(long.m.data.stan)/nrow(m.data.stan)
+str(m.determinants)
+#determinants had 154 columns, filter_id and 153 others. Now the data frame is 153 times longer, I think we're good to go
+slice(long.m.data.stan, 1:10)
+#slice is basially head, but you can pick where to look
+slice(long.m.data.stan, 200:210)
+
+#do simple regressions on bc_conc for each of the determinants
+long.m.data.stan %>%
+  group_by(variable) %>%
+  do(tidy(lm(bc_conc ~ value, .))) %>%
+  filter(term == "value") %>%
+  mutate(Beta = as.character(round(estimate, 5)), "P Value" = round(p.value, 3), SE = round(std.error, 3)) %>% 
+  select(Beta, SE, "P Value") %>% 
+  as.data.frame()
+
+#do simple regressions on uvpm_conc for each of the determinants
+long.m.data.stan %>%
+  group_by(variable) %>%
+  do(tidy(lm(uvpm_conc ~ value, .))) %>%
+  filter(term == "value") %>%
+  mutate(Beta = as.character(round(estimate, 5)), "P Value" = round(p.value, 3), SE = round(std.error, 3)) %>% 
+  select(Beta, SE, "P Value") %>% 
+  as.data.frame()
+
+#to get CIs
+long.m.data.stan %>%
+  group_by(variable) %>%
+  do(tidy(confint(lm(uvpm_conc ~ value, .)))) %>%
+  filter(.rownames == "value") %>%
+  mutate(LL = as.character(round(X2.5.., 5)), UL = as.character(round(X97.5.., 5))) %>% 
+  select(LL, UL) %>% 
+  as.data.frame()
+
+#check one of each to make sure it worked
+summary(lm(data = m.data.stan, formula = bc_conc ~ rail_200m))
+summary(lm(data = m.data.stan, formula = uvpm_conc ~ pop_500m))
+#tried to figure out how to get more info out of the regressions. Not sure if I need more, but curious. The code turns the regression into a tibble like this:
+tidy(lm(data = m.data.stan, formula = uvpm_conc ~ pop_500m))
+tidy(confint(lm(data = m.data.stan, formula = uvpm_conc ~ pop_500m)))
+#might want to look into getting confints  
+confint(lm(data = m.data.stan, formula = uvpm_conc ~ pop_500m))
+
+#using a different method found here https://stackoverflow.com/questions/51567914/hundreds-of-linear-regressions-that-run-by-group-in-r
+long.m.data.stan %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared, p.value) 
+
+long.m.data.stan %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(uvpm_conc ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared, p.value) 
+
+stargazer(, ci = TRUE, ci.level = 0.95, type = "html")

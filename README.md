@@ -2,3 +2,5 @@
 Summer 2019 Practicum, data collected the previous year
 
 Merged the outcomes and determinants. Plotted a bunch of histograms just to get a feel for the data
+
+Ran all the univariate regressions

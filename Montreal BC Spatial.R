@@ -4,6 +4,13 @@ library(Hmisc)
 library(dplyr)
 library(table1)
 library(stargazer)
+library(xlsx)
+library(formattable)
+library(purrr)
+library(reshape)
+library(broom)
+library(tidyverse)
+library(BMA)
 
 setwd("/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019")
 
@@ -64,6 +71,8 @@ str(m.data)
 #note: missing pop_300m, 200m, 100m, and 50m
 #note: MTL_space_23 has a huge BC and UVPM values
 #what other info from the outcomes should I keep in the data frame?
+
+formattable(subset(m.data.stan, f.id == "MTL_space_23"))
 
 #take a quick gander at some of the distributions
 hist(m.data$bc_conc, breaks = 100)
@@ -232,19 +241,20 @@ colnames(m.data)[c(-1,-2,-3)]
 #time to standardize it
 #this is how to standardize just part of the data frame
 summary(scale(m.data[ , c(-1,-2,-3)]))
-m.data.stan <- data.frame(m.data[ , 1:3], scale(m.data.stan[ , c(-1,-2,-3)]))
+m.data.stan <- data.frame(m.data[ , 1:3], scale(m.data[ , c(-1,-2,-3)]))
 summary(m.data.stan)
 #can see in the summary that all the means are zero
 apply(m.data.stan, 2, sd)
-#can see all the sds are 1. Noice.
+#can see all the sds are 1, nnnnnnnoice!
 
-m.data.stan <- as_tibble(m.data.stan)
 
-library(purrr)
-library(reshape)
-library(broom)
-library(tidyverse)
+
+
+str(m.data.stan)
 long.m.data.stan <- melt(m.data.stan, id.vars = c("f.id", "bc_conc", "uvpm_conc"))
+str(long.m.data.stan)
+#had this tibble conversion in there but I don't know why. It makes things bad if I do it.....#out for now
+#m.data.stan <- as_tibble(m.data.stan)
 
 #trying out this: https://datascienceplus.com/how-to-do-regression-analysis-for-multiple-independent-or-dependent-variables/
 #check to make sure nothing is too squirrelly
@@ -256,32 +266,73 @@ slice(long.m.data.stan, 1:10)
 #slice is basially head, but you can pick where to look
 slice(long.m.data.stan, 200:210)
 
+####Univariate regressions. Found various code that will run all the univariate at once, but each one gives diferent outputs. I'm just going to frankenstein them together instead of finding an elegant solution
+#https://stackoverflow.com/questions/51567914/hundreds-of-linear-regressions-that-run-by-group-in-r
+
 #do simple regressions on bc_conc for each of the determinants
-long.m.data.stan %>%
+bc.uni.beta.p <- long.m.data.stan %>%
   group_by(variable) %>%
   do(tidy(lm(bc_conc ~ value, .))) %>%
   filter(term == "value") %>%
-  mutate(Beta = as.character(round(estimate, 5)), "P Value" = round(p.value, 3), SE = round(std.error, 3)) %>% 
+  mutate(Beta = as.character(round(estimate, 2)), "P Value" = round(p.value, 3), SE = round(std.error, 1)) %>% 
   select(Beta, SE, "P Value") %>% 
   as.data.frame()
+#to get CIs
+bc.uni.cis <- long.m.data.stan %>%
+  group_by(variable) %>%
+  do(tidy(confint(lm(bc_conc ~ value, .)))) %>%
+  filter(.rownames == "value") %>%
+  mutate("2.5%" = as.character(round(X2.5.., 2)), "97.5%" = as.character(round(X97.5.., 2))) %>% 
+  select("2.5%", "97.5%") %>% 
+  as.data.frame()
+#get the R2
+bc.uni.r2 <- long.m.data.stan %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared)
+
+options(scipen=999)
+#put em together 
+bc.uni.reg <- data.frame(bc.uni.beta.p[ , c(1,2)], lapply(bc.uni.cis[ , c(2,3)], as.numeric), round(bc.uni.r2[ ,2], 5), bc.uni.beta.p[ , c(3,4)])
+bc.uni.reg$Beta <- as.numeric(bc.uni.reg$Beta)
+str(bc.uni.reg)
+
+
 
 #do simple regressions on uvpm_conc for each of the determinants
-long.m.data.stan %>%
+uvpm.uni.beta.p <- long.m.data.stan %>%
   group_by(variable) %>%
   do(tidy(lm(uvpm_conc ~ value, .))) %>%
   filter(term == "value") %>%
-  mutate(Beta = as.character(round(estimate, 5)), "P Value" = round(p.value, 3), SE = round(std.error, 3)) %>% 
+  mutate(Beta = as.character(round(estimate, 2)), "P Value" = round(p.value, 3), SE = round(std.error, 1)) %>% 
   select(Beta, SE, "P Value") %>% 
   as.data.frame()
-
-#to get CIs
-long.m.data.stan %>%
+#uvpm CIs
+uvpm.uni.cis <- long.m.data.stan %>%
   group_by(variable) %>%
   do(tidy(confint(lm(uvpm_conc ~ value, .)))) %>%
   filter(.rownames == "value") %>%
-  mutate(LL = as.character(round(X2.5.., 5)), UL = as.character(round(X97.5.., 5))) %>% 
-  select(LL, UL) %>% 
+  mutate("2.5%" = as.character(round(X2.5.., 2)), "97.5%" = as.character(round(X97.5.., 2))) %>% 
+  select("2.5%", "97.5%") %>% 
   as.data.frame()
+#uvpm R2
+uvpm.uni.r2 <- long.m.data.stan %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(uvpm_conc ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared) 
+
+uvpm.uni.reg <- data.frame(uvpm.uni.beta.p[ , c(1,2)], lapply(uvpm.uni.cis[ , c(2,3)], as.numeric), uvpm.uni.r2[ ,2], uvpm.uni.beta.p[ , c(3,4)])
+uvpm.uni.reg$Beta <- as.numeric(uvpm.uni.reg$Beta)
+
+write.csv(bc.uni.reg, file = "BC_Uni_Regressions.csv")
+write.csv(uvpm.uni.reg, file = "UVPM_Uni_Regressions.csv")
+
+formattable(bc.uni.reg)
+formattable(uvpm.uni.reg)
 
 #check one of each to make sure it worked
 summary(lm(data = m.data.stan, formula = bc_conc ~ rail_200m))
@@ -289,22 +340,8 @@ summary(lm(data = m.data.stan, formula = uvpm_conc ~ pop_500m))
 #tried to figure out how to get more info out of the regressions. Not sure if I need more, but curious. The code turns the regression into a tibble like this:
 tidy(lm(data = m.data.stan, formula = uvpm_conc ~ pop_500m))
 tidy(confint(lm(data = m.data.stan, formula = uvpm_conc ~ pop_500m)))
-#might want to look into getting confints  
-confint(lm(data = m.data.stan, formula = uvpm_conc ~ pop_500m))
 
-#using a different method found here https://stackoverflow.com/questions/51567914/hundreds-of-linear-regressions-that-run-by-group-in-r
-long.m.data.stan %>% 
-  nest(-variable) %>% 
-  mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)),
-         results = map(fit, glance)) %>% 
-  unnest(results) %>% 
-  select(variable, r.squared, p.value) 
+str(m.data.stan)
 
-long.m.data.stan %>% 
-  nest(-variable) %>% 
-  mutate(fit = map(data, ~ lm(uvpm_conc ~ value, data = .)),
-         results = map(fit, glance)) %>% 
-  unnest(results) %>% 
-  select(variable, r.squared, p.value) 
+bic.glm.formula(data = m.data.stan, f = m.data.stan$bc_conc ~ . - bc_conc - uvpm_conc, family = "Gaussian")
 
-stargazer(, ci = TRUE, ci.level = 0.95, type = "html")

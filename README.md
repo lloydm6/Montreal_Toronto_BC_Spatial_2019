@@ -10,3 +10,5 @@ Made a nice csv output for the regressions....nice in my opinion.
 Ran TO summer unis
 
 xy fit plots for TO and MTL summer. Ran uni regs and plots with outliers removed. 
+
+Added pooled. No pooled plots.

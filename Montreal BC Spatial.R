@@ -871,6 +871,145 @@ nrow(subset(to.bc.uni.reg, P.Value <= 0.05))
 nrow(subset(u10k.to.bc.uni.reg, P.Value <= 0.05))
 #removing the outlier takes it from 61 pvals, ot 70 pvals
 
+#Summer Pool Uni Reg #####
+ncol(m.s.data.stan)
+ncol(t.data.stan)
+ncol(m.s.data)
+ncol(t.data)
+#they don't have the same number of variables. Recall that I removed some columns from the t.data.stan because all the values within the column were the same. Need to keep that column in now that Montreal will add variability ya?. 
+
+#these are in m.s.data, but not in t.data
+setdiff(colnames(m.s.data.stan), colnames(t.data))
+#these are in t.data, but not in m.s.data
+setdiff(colnames(t.data), colnames(m.s.data))
+#visual check if I want
+cbind(colnames(m.s.data), colnames(t.data))
+
+#take out the non-matching columns
+m.s.data.pool <- m.s.data
+m.s.data.pool$water_50m <- NULL
+m.s.data.pool$highway_50m <- NULL
+m.s.data.pool$bus_stop_200m <- NULL
+m.s.data.pool$bus_stop_100m <- NULL
+
+t.data.pool <- t.data
+t.data.pool$NPRI_PM_100m <- NULL
+t.data.pool$NPRI_Nox_100m <- NULL
+
+str(t.data.pool)  
+
+mts.data.pool <- as.data.frame(rbind(m.s.data.pool, t.data.pool))
+
+#standardize them
+colnames(mts.data.pool)[c(-1,-2,-3)]
+summary(scale(mts.data.pool[ , c(-1,-2,-3)]))
+mts.data.pool.stan <- data.frame(mts.data.pool[ , 1:3], scale(mts.data.pool[ , c(-1,-2,-3)]))
+summary(mts.data.pool.stan)
+#can see in the summary that all the means are zero
+apply(mts.data.pool.stan, 2, sd)
+
+
+#now run all the uni regressions. Not sure if the pooled will be an MTL annual average pooled with TO or MTL summer pooled with TO. THis is MTL summer with TO
+str(mts.data.pool.stan)
+long.mts.data.pool.stan <- melt(mts.data.pool.stan, id.vars = c("f.id", "bc_conc", "uvpm_conc"))
+str(long.mts.data.pool.stan)
+
+#trying out this: https://datascienceplus.com/how-to-do-regression-analysis-for-multiple-independent-or-dependent-variables/
+#check to make sure nothing is too squirrelly
+summary(long.mts.data.pool.stan)
+nrow(long.mts.data.pool.stan)/nrow(mts.data.pool.stan)
+
+####Univariate regressions. Found various code that will run all the univariate at once, but each one gives diferent outputs. I'm just going to frankenstein them together instead of finding an elegant solution
+#https://stackoverflow.com/questions/51567914/hundreds-of-linear-regressions-that-run-by-group-in-r
+
+#do simple regressions on bc_conc for each of the determinants
+mts.pool.bc.uni.beta.p <- long.mts.data.pool.stan %>%
+  group_by(variable) %>%
+  do(tidy(lm(bc_conc ~ value, .))) %>%
+  filter(term == "value") %>%
+  mutate(Beta = as.character(round(estimate, 2)), "P Value" = round(p.value, 3), SE = round(std.error, 1)) %>% 
+  select(Beta, SE, "P Value") %>% 
+  as.data.frame()
+#to get CIs
+mts.pool.bc.uni.cis <- long.mts.data.pool.stan %>%
+  group_by(variable) %>%
+  do(tidy(confint(lm(bc_conc ~ value, .)))) %>%
+  filter(.rownames == "value") %>%
+  mutate("2.5%" = as.character(round(X2.5.., 2)), "97.5%" = as.character(round(X97.5.., 2))) %>% 
+  select("2.5%", "97.5%") %>% 
+  as.data.frame()
+#get the R2
+mts.pool.bc.uni.r2 <- long.mts.data.pool.stan %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared)
+
+#put em together 
+mts.pool.bc.uni.reg <- data.frame(mts.pool.bc.uni.beta.p[ , c(1,2)], lapply(mts.pool.bc.uni.cis[ , c(2,3)], as.numeric), round(mts.pool.bc.uni.r2[ ,2], 5), mts.pool.bc.uni.beta.p[ , c(3,4)])
+mts.pool.bc.uni.reg$Beta <- as.numeric(mts.pool.bc.uni.reg$Beta)
+str(mts.pool.bc.uni.reg)
+formattable(mts.pool.bc.uni.reg)
+#could do this all again for uvpm, but I'll wait until I hear back re: how to pool
+
+#do unis without the 1 extreme outlier. The 4 MTL outliers are within the range of tonronto
+#do simple regressions on bc_conc for each of the determinants
+mts.pool.outlier.level <- 10000
+u10k.mts.pool.bc.uni.beta.p <- subset(long.mts.data.pool.stan, bc_conc < mts.pool.outlier.level) %>%
+  group_by(variable) %>%
+  do(tidy(lm(bc_conc ~ value, .))) %>%
+  filter(term == "value") %>%
+  mutate(Beta = as.character(round(estimate, 2)), "P Value" = round(p.value, 3), SE = round(std.error, 1)) %>% 
+  select(Beta, SE, "P Value") %>% 
+  as.data.frame()
+#to get CIs
+u10k.mts.pool.bc.uni.cis <- subset(long.mts.data.pool.stan, bc_conc < mts.pool.outlier.level) %>%
+  group_by(variable) %>%
+  do(tidy(confint(lm(bc_conc ~ value, .)))) %>%
+  filter(.rownames == "value") %>%
+  mutate("2.5%" = as.character(round(X2.5.., 2)), "97.5%" = as.character(round(X97.5.., 2))) %>% 
+  select("2.5%", "97.5%") %>% 
+  as.data.frame()
+#get the R2
+u10k.mts.pool.bc.uni.r2 <- subset(long.mts.data.pool.stan, bc_conc < mts.pool.outlier.level) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared)
+
+#put em together 
+u10k.mts.pool.bc.uni.reg <- data.frame(u10k.mts.pool.bc.uni.beta.p[ , c(1,2)], lapply(u10k.mts.pool.bc.uni.cis[ , c(2,3)], as.numeric), round(u10k.mts.pool.bc.uni.r2[ ,2], 5), u10k.mts.pool.bc.uni.beta.p[ , c(3,4)])
+u10k.mts.pool.bc.uni.reg$Beta <- as.numeric(u10k.mts.pool.bc.uni.reg$Beta)
+str(u10k.mts.pool.bc.uni.reg)
+formattable(u10k.mts.pool.bc.uni.reg)
+
+nrow(subset(mts.pool.bc.uni.reg, P.Value <= 0.05))
+nrow(subset(u10k.mts.pool.bc.uni.reg, P.Value <= 0.05))
+
+formattable(subset(mts.pool.bc.uni.reg, P.Value <= 0.05))
+formattable(subset(u10k.mts.pool.bc.uni.reg, P.Value <= 0.05))
+#could do this all again for uvpm, but I'll wait until I hear back from Susannah re outliers
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #MTL XY Fit Plots######
 
 ########MTL plots, start with just scatter plots of each variable vs bc. Add fit lines and p values and R2
@@ -1148,14 +1287,17 @@ str(m.s.data.stan)
 ##TO summer has 1 extreme outlier
   #taking the 1 extreme outlier out gives 70 pvals (as opposed to keeping it in which gives 61)
 
+#Pooling
+  #pool mtl summer with to? Or MTL annual with TO?
+
 #next work
 #ask the questions
 #keep going on the Toronto data. Should be able to do that
 
 #regression list:
-#mtl summer YES
-#to summer YES
-#combined summer YES
+#mtl summer YES -check
+#to summer YES - check
+#combined summer YES - check (both summer; plot todo)
 #mtl summer log YES
 #to summer log YES  
 #combined summer log YES

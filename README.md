@@ -12,3 +12,5 @@ Ran TO summer unis
 xy fit plots for TO and MTL summer. Ran uni regs and plots with outliers removed. 
 
 Added pooled. No pooled plots.
+
+Added Montreal Winter (reg plus plots). Set up Montreal Annual data, but haven't done plots yet

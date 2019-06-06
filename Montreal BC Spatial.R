@@ -15,6 +15,13 @@ library(tidyverse)
 library(BMA)
 library(ggpmisc)
 library(miscTools)
+library(ImportExport)
+library(rJava)
+install.packages('rJava',,'http://www.rforge.net/', type = "source")
+install.packages("helloJavaWorld")
+library(helloJavaWorld)
+options("java.home"="/Library/Java/JavaVirtualMachines/jdk1.8.0_45.jdk/Contents/Home/jre")
+
 
 setwd("/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019")
 
@@ -279,10 +286,10 @@ str(m.a.data)
 #Outlier Inspection #####
 which.max(t.s.data$bc_conc)
 t.s.data[75, ]
-formattable(t.s.data.stan[75,])
+formattable(t.s.data[75,])
 
-formattable(subset(m.s.data.stan, bc_conc > 5000))
-describe(subset(m.s.data.stan, bc_conc > 5000))
+formattable(subset(m.s.data, bc_conc > 4000))
+describe(subset(m.s.data, bc_conc > 4000))
 
 
 # MTL S Histograms ####
@@ -925,6 +932,58 @@ summary(t.s.data.stan)
 #Pooled standardize is down in it's regression. Not sure why. Might reorganize later. 
 
 
+
+#### TO+MTL S Pooled
+
+ncol(m.s.data.stan)
+ncol(t.s.data.stan)
+ncol(m.s.data)
+ncol(t.s.data)
+#they don't have the same number of variables. Recall that I removed 6 columns from the t.s.data.stan because all the values within the column were the same. Need to keep that column in now that Montreal will add variability ya?. 
+
+#these are in m.s.data, but not in t.s.data (4 vars)
+setdiff(colnames(m.s.data.stan), colnames(t.s.data))
+#these are in t.s.data, but not in m.s.data (2 vars)
+setdiff(colnames(t.s.data), colnames(m.s.data))
+#visual check if I want
+cbind(colnames(m.s.data), colnames(t.s.data))
+
+#take out the non-matching columns for each one to set up the data that wil be merged for the pooled data frame. 
+m.s.data.pool <- m.s.data
+m.s.data.pool$water_50m <- NULL
+m.s.data.pool$highway_50m <- NULL
+m.s.data.pool$bus_stop_200m <- NULL
+m.s.data.pool$bus_stop_100m <- NULL
+
+t.s.data.pool <- t.s.data
+t.s.data.pool$NPRI_PM_100m <- NULL
+t.s.data.pool$NPRI_Nox_100m <- NULL
+
+str(t.s.data.pool)  
+
+mts.data.pool <- as.data.frame(rbind(m.s.data.pool, t.s.data.pool))
+head(mts.data.pool[,1:4])
+mts.data.pool$city <- c(rep("MTL", nrow(m.s.data.pool)), rep("TO", nrow(t.s.data.pool)))
+describe(mts.data.pool$city)
+
+#standardize them
+colnames(mts.data.pool)[c(-1,-2,-3,-4, -ncol(mts.data.pool))]
+summary(scale(mts.data.pool[ , c(-1,-2,-3,-4, -ncol(mts.data.pool))]))
+mts.data.pool.stan <- data.frame(mts.data.pool[ , 1:4], city =mts.data.pool$city, scale(mts.data.pool[ , c(-1,-2,-3,-4,-ncol(mts.data.pool))]))
+summary(mts.data.pool.stan)
+head(mts.data.pool.stan[ ,1:5])
+tail(mts.data.pool.stan[ ,1:5])
+#TOs are coded TO and MTLs are coded MTL
+
+#can see in the summary that all the means are zero
+apply(mts.data.pool.stan, 2, sd)
+
+
+
+
+
+
+
 # MTL Summer Uni Regressions #####
 
 #####MTL UNI Regressions
@@ -1002,10 +1061,11 @@ m.s.uvpm.uni.r2 <- long.m.s.data.stan %>%
 m.s.uvpm.uni.reg <- data.frame(m.s.uvpm.uni.beta.p[ , c(1,2)], lapply(m.s.uvpm.uni.cis[ , c(2,3)], as.numeric), m.s.uvpm.uni.r2[ ,2], m.s.uvpm.uni.beta.p[ , c(3,4)])
 m.s.uvpm.uni.reg$Beta <- as.numeric(m.s.uvpm.uni.reg$Beta)
 
+#write them. Now I can use these excels as a quick load for the data if I want
 write.csv(m.s.bc.uni.reg, file = "MTL_S_BC_Uni_Regressions.csv")
 write.csv(m.s.uvpm.uni.reg, file = "MTL_S_UVPM_Uni_Regressions.csv")
-write.csv(m.s.data, file = "montreal_data.csv")
-write.csv(m.s.data.stan, file = "montreal_standardized_data.csv")
+write.csv(m.s.data, file = "montreal_summer_data.csv")
+write.csv(m.s.data.stan, file = "montreal_summer_standardized_data.csv")
 
 formattable(m.s.bc.uni.reg)
 formattable(m.s.uvpm.uni.reg)
@@ -1028,15 +1088,15 @@ summary(lm(data = m.s.data.stan, formula = uvpm_conc ~ pop_500m))
 tidy(lm(data = m.s.data.stan, formula = uvpm_conc ~ pop_500m))
 tidy(confint(lm(data = m.s.data.stan, formula = uvpm_conc ~ pop_500m)))
 
-#MTL Uni Reg -Outliers #####
+#MTL Summer Uni Reg -Outliers #####
 
 #based on the graphs below, we see that there is between 1 to 5 outliers that really drive the fits. I'll take a quick look at them to see what's going on. 
 #They may be bad data points depending on the volumes used or time run. Or maybe they are points that we don't want in our model (eg: right on a train, we want to describe city living, not train living) 
 #one of teh outliers was a "bad data", but the other four are considered good data
-describe(subset(m.s.data.stan, bc_conc > 5000))
-describe(subset(m.s.outcomes, BC_ng_m3 > 5000))
-formattable(subset(m.s.outcomes, Monitor_type == "Harvard" & BC_ng_m3 > 5000))
-formattable(subset(m.s.outcomes, Monitor_type == "UPAS" & BC_ng_m3 > 5000))
+describe(subset(m.s.data.stan, bc_conc > 4000))
+describe(subset(m.s.outcomes, BC_ng_m3 > 4000))
+formattable(subset(m.s.outcomes, Monitor_type == "Harvard" & BC_ng_m3 > 4000))
+formattable(subset(m.s.outcomes, Monitor_type == "UPAS" & BC_ng_m3 > 4000))
 
 #the one realy bad one has been removed, but not the other 4
 
@@ -1058,15 +1118,15 @@ formattable(subset(m.s.outcomes, Monitor_type == "UPAS" & BC_ng_m3 > 5000))
 #The other four large outliers are not evidently wrong. Not sure what's going on there after my initial glance. Maybe these monitors worked perfectly fine and they are just very distintct places in the city?
   #could take a look at the determinants of these four outliers
 #here are the names of them
-str(subset(m.s.outcomes, BC_ng_m3 > 5000)$filter)
-subset(m.s.outcomes, BC_ng_m3 > 5000 & BC_ng_m3 < 10000)$filter
-subset(long.m.data.stan, bc_conc < 5000)
+str(subset(m.s.outcomes, BC_ng_m3 > 45000)$filter)
+subset(m.s.outcomes, BC_ng_m3 > 4000 & BC_ng_m3 < 10000)$filter
+subset(m.s.data.stan, bc_conc < 4000)
 
 #do unis without all 4 outliers
 #do simple regressions on bc_conc for each of the determinants
 
-m.s.outlier.level <- 5000
-m.s.u5k.bc.uni.beta.p <- subset(long.m.s.data.stan, bc_conc < m.s.outlier.level) %>%
+m.s.outlier.level <- 4000
+m.s.u4k.bc.uni.beta.p <- subset(long.m.s.data.stan, bc_conc < m.s.outlier.level) %>%
   group_by(variable) %>%
   do(tidy(lm(bc_conc ~ value, .))) %>%
   filter(term == "value") %>%
@@ -1074,7 +1134,7 @@ m.s.u5k.bc.uni.beta.p <- subset(long.m.s.data.stan, bc_conc < m.s.outlier.level)
   select(Beta, SE, "P Value") %>% 
   as.data.frame()
 #to get CIs
-m.s.u5k.bc.uni.cis <- subset(long.m.s.data.stan, bc_conc < m.s.outlier.level) %>%
+m.s.u4k.bc.uni.cis <- subset(long.m.s.data.stan, bc_conc < m.s.outlier.level) %>%
   group_by(variable) %>%
   do(tidy(confint(lm(bc_conc ~ value, .)))) %>%
   filter(.rownames == "value") %>%
@@ -1082,7 +1142,7 @@ m.s.u5k.bc.uni.cis <- subset(long.m.s.data.stan, bc_conc < m.s.outlier.level) %>
   select("2.5%", "97.5%") %>% 
   as.data.frame()
 #get the R2
-m.s.u5k.bc.uni.r2 <- subset(long.m.s.data.stan, bc_conc < m.s.outlier.level) %>% 
+m.s.u4k.bc.uni.r2 <- subset(long.m.s.data.stan, bc_conc < m.s.outlier.level) %>% 
   nest(-variable) %>% 
   mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)),
          results = map(fit, glance)) %>% 
@@ -1090,20 +1150,57 @@ m.s.u5k.bc.uni.r2 <- subset(long.m.s.data.stan, bc_conc < m.s.outlier.level) %>%
   select(variable, r.squared)
 
 #put em together 
-m.s.u5k.bc.uni.reg <- data.frame(m.s.u5k.bc.uni.beta.p[ , c(1,2)], lapply(m.s.u5k.bc.uni.cis[ , c(2,3)], as.numeric), round(m.s.u5k.bc.uni.r2[ ,2], 5), m.s.u5k.bc.uni.beta.p[ , c(3,4)])
-m.s.u5k.bc.uni.reg$Beta <- as.numeric(m.s.u5k.bc.uni.reg$Beta)
+m.s.u4k.bc.uni.reg <- data.frame(m.s.u4k.bc.uni.beta.p[ , c(1,2)], lapply(m.s.u4k.bc.uni.cis[ , c(2,3)], as.numeric), round(m.s.u4k.bc.uni.r2[ ,2], 5), m.s.u4k.bc.uni.beta.p[ , c(3,4)])
+m.s.u4k.bc.uni.reg$Beta <- as.numeric(m.s.u4k.bc.uni.reg$Beta)
 
-nrow(subset(m.s.u5k.bc.uni.reg, P.Value <= 0.05))
+nrow(subset(m.s.u4k.bc.uni.reg, P.Value <= 0.05))
 nrow(subset(m.s.bc.uni.reg, P.Value <= 0.05))
 #8 with all data and 42 with the 4 over 5k outliers cut out
 
-formattable(m.s.u5k.bc.uni.reg)
-formattable(subset(m.s.u5k.bc.uni.reg, P.Value <= 0.05))
+formattable(m.s.u4k.bc.uni.reg)
+formattable(subset(m.s.u4k.bc.uni.reg, P.Value <= 0.05))
 #could do this all again for uvpm, but I'll wait until I hear back from Susannah re outliers
 
 
+#repeat for uvpm
+m.s.u4k.uvpm.uni.beta.p <- subset(long.m.s.data.stan, uvpm_conc < m.s.outlier.level) %>%
+  group_by(variable) %>%
+  do(tidy(lm(uvpm_conc ~ value, .))) %>%
+  filter(term == "value") %>%
+  mutate(Beta = as.character(round(estimate, 2)), "P Value" = round(p.value, 3), SE = round(std.error, 1)) %>% 
+  select(Beta, SE, "P Value") %>% 
+  as.data.frame()
+#to get CIs
+m.s.u4k.uvpm.uni.cis <- subset(long.m.s.data.stan, uvpm_conc < m.s.outlier.level) %>%
+  group_by(variable) %>%
+  do(tidy(confint(lm(uvpm_conc ~ value, .)))) %>%
+  filter(.rownames == "value") %>%
+  mutate("2.5%" = as.character(round(X2.5.., 2)), "97.5%" = as.character(round(X97.5.., 2))) %>% 
+  select("2.5%", "97.5%") %>% 
+  as.data.frame()
+#get the R2
+m.s.u4k.uvpm.uni.r2 <- subset(long.m.s.data.stan, uvpm_conc < m.s.outlier.level) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(uvpm_conc ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared)
+
+#put em together 
+m.s.u4k.uvpm.uni.reg <- data.frame(m.s.u4k.uvpm.uni.beta.p[ , c(1,2)], lapply(m.s.u4k.uvpm.uni.cis[ , c(2,3)], as.numeric), round(m.s.u4k.uvpm.uni.r2[ ,2], 5), m.s.u4k.uvpm.uni.beta.p[ , c(3,4)])
+m.s.u4k.uvpm.uni.reg$Beta <- as.numeric(m.s.u4k.uvpm.uni.reg$Beta)
+
+nrow(subset(m.s.u4k.uvpm.uni.reg, P.Value <= 0.05))
+nrow(subset(m.s.uvpm.uni.reg, P.Value <= 0.05))
+#3 with all data and 33 with the 4 over 4k outliers cut out
+
+formattable(m.s.u4k.uvpm.uni.reg)
+formattable(subset(m.s.u4k.uvpm.uni.reg, P.Value <= 0.05))
+#could do this all again for uvpm, but I'll wait until I hear back from Susannah re outliers
 
 
+write.csv(m.s.u4k.bc.uni.reg, file = "MTL_S_u4k_BC_Uni_Regressions.csv")
+write.csv(m.s.u4k.uvpm.uni.reg, file = "MTL_S_u4k_UVPM_Uni_Regressions.csv")
 
 
 
@@ -1159,6 +1256,7 @@ m.w.bc.uni.r2 <- long.m.w.data.stan %>%
 m.w.bc.uni.reg <- data.frame(m.w.bc.uni.beta.p[ , c(1,2)], lapply(m.w.bc.uni.cis[ , c(2,3)], as.numeric), round(m.w.bc.uni.r2[ ,2], 5), m.w.bc.uni.beta.p[ , c(3,4)])
 m.w.bc.uni.reg$Beta <- as.numeric(m.w.bc.uni.reg$Beta)
 str(m.w.bc.uni.reg)
+
 
 #do simple regressions on uvpm_conc for each of the determinants
 m.w.uvpm.uni.beta.p <- long.m.w.data.stan %>%
@@ -1230,7 +1328,280 @@ hist(m.w.data.stan$uvpm_conc)
 
 
 
+
+
+
+
+
+
+
+
+
 # MTL Annual Uni Regressions ######
+str(m.a.data.stan)
+colnames(m.a.data.stan)[3:4] <- c("bc_conc", "uvpm_conc")
+long.m.a.data.stan <- melt(m.a.data.stan, id.vars = c("f.id.summer", "f.id.winter", "bc_conc", "uvpm_conc"))
+str(long.m.w.data.stan)
+
+#check to make sure nothing is too squirrelly
+summary(long.m.w.data.stan)
+ncol(m.w.data.stan)
+nrow(long.m.w.data.stan)/nrow(m.w.data.stan)
+#data.stan had 154 columns, 2 filter ids, 2 outcomes, and 150 determinants. Now the data frame is 150 times longer, I think we're good to go
+slice(long.m.w.data.stan, 1:10)
+#slice is basially head, but you can pick where to look
+slice(long.m.w.data.stan, 200:210)
+
+#do simple regressions on bc_conc for each of the determinants
+m.a.bc.uni.beta.p <- long.m.a.data.stan %>%
+  group_by(variable) %>%
+  do(tidy(lm(bc_conc ~ value, .))) %>%
+  filter(term == "value") %>%
+  mutate(Beta = as.character(round(estimate, 2)), "P Value" = round(p.value, 3), SE = round(std.error, 1)) %>% 
+  select(Beta, SE, "P Value") %>% 
+  as.data.frame()
+#to get CIs
+m.a.bc.uni.cis <- long.m.a.data.stan %>%
+  group_by(variable) %>%
+  do(tidy(confint(lm(bc_conc ~ value, .)))) %>%
+  filter(.rownames == "value") %>%
+  mutate("2.5%" = as.character(round(X2.5.., 2)), "97.5%" = as.character(round(X97.5.., 2))) %>% 
+  select("2.5%", "97.5%") %>% 
+  as.data.frame()
+#get the R2
+m.a.bc.uni.r2 <- long.m.a.data.stan %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared)
+str(m.a.bc.uni.r2)
+
+#com_50 is NA, it gets included in the CIs and R2, but not in the beta.p for some reason. Need to cut it out. 
+setdiff(m.a.bc.uni.beta.p$variable, m.a.bc.uni.cis$variable)
+setdiff(m.a.bc.uni.cis$variable, m.a.bc.uni.beta.p$variable)
+describe(m.a.data.stan$com_50m)
+#it's all zeros and 1 high value. Not an informative variable.
+filter(m.a.bc.uni.beta.p, variable == "com_50m")
+filter(m.a.bc.uni.cis, variable == "com_50m")
+filter(m.a.bc.uni.r2, variable == "com_50m")
+#get rid of those rows
+#m.a.bc.uni.cis <- filter(m.a.bc.uni.cis, !is.na(`2.5%`))
+#m.a.bc.uni.r2 <- filter(m.a.bc.uni.r2, r.squared != 0)
+
+#for bringing it all together, it's better to insert a row
+m.a.bc.uni.beta.p <- add_row(m.a.bc.uni.beta.p, variable = setdiff(m.a.bc.uni.cis$variable, m.a.bc.uni.beta.p$variable), Beta = NA, SE = NA, `P Value` = NA, .after = which(is.na(m.a.bc.uni.cis$`2.5%`)))
+
+#put em together 
+m.a.bc.uni.reg <- data.frame(m.a.bc.uni.beta.p[ , c(1,2)], lapply(m.a.bc.uni.cis[ , c(2,3)], as.numeric), round(m.a.bc.uni.r2[ ,2], 5), m.a.bc.uni.beta.p[ , c(3,4)])
+m.a.bc.uni.reg$Beta <- as.numeric(m.a.bc.uni.reg$Beta)
+str(m.a.bc.uni.reg)
+
+
+
+#do simple regressions on uvpm_conc for each of the determinants
+m.a.uvpm.uni.beta.p <- long.m.a.data.stan %>%
+  group_by(variable) %>%
+  do(tidy(lm(uvpm_conc ~ value, .))) %>%
+  filter(term == "value") %>%
+  mutate(Beta = as.character(round(estimate, 2)), "P Value" = round(p.value, 3), SE = round(std.error, 1)) %>% 
+  select(Beta, SE, "P Value") %>% 
+  as.data.frame()
+#uvpm CIs
+m.a.uvpm.uni.cis <- long.m.a.data.stan %>%
+  group_by(variable) %>%
+  do(tidy(confint(lm(uvpm_conc ~ value, .)))) %>%
+  filter(.rownames == "value") %>%
+  mutate("2.5%" = as.character(round(X2.5.., 2)), "97.5%" = as.character(round(X97.5.., 2))) %>% 
+  select("2.5%", "97.5%") %>% 
+  as.data.frame()
+#uvpm R2
+m.a.uvpm.uni.r2 <- long.m.a.data.stan %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(uvpm_conc ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared) 
+
+
+#com_50 is NA, it gets included in the CIs and R2, but not in the beta.p for some reason. Need to cut it out. 
+setdiff(m.a.uvpm.uni.beta.p$variable, m.a.uvpm.uni.cis$variable)
+setdiff(m.a.uvpm.uni.cis$variable, m.a.uvpm.uni.beta.p$variable)
+describe(m.a.data.stan$com_50m)
+#it's all zeros and 1 high value. Not an informative variable.
+filter(m.a.uvpm.uni.beta.p, variable == "com_50m")
+filter(m.a.uvpm.uni.cis, variable == "com_50m")
+filter(m.a.uvpm.uni.r2, variable == "com_50m")
+#get rid of those rows
+#m.a.uvpm.uni.cis <- filter(m.a.uvpm.uni.cis, !is.na(`2.5%`))
+#m.a.uvpm.uni.r2 <- filter(m.a.uvpm.uni.r2, r.squared != 0)
+#for bringing it all ogether later, it's better to insert a row
+m.a.uvpm.uni.beta.p <- add_row(m.a.uvpm.uni.beta.p, variable = setdiff(m.a.uvpm.uni.cis$variable, m.a.uvpm.uni.beta.p$variable), Beta = NA, SE = NA, `P Value` = NA, .after = which(is.na(m.a.uvpm.uni.cis$`2.5%`)))
+
+m.a.uvpm.uni.reg <- data.frame(m.a.uvpm.uni.beta.p[ , c(1,2)], lapply(m.a.uvpm.uni.cis[ , c(2,3)], as.numeric), m.a.uvpm.uni.r2[ ,2], m.a.uvpm.uni.beta.p[ , c(3,4)])
+m.a.uvpm.uni.reg$Beta <- as.numeric(m.a.uvpm.uni.reg$Beta)
+
+write.csv(m.a.bc.uni.reg, file = "MTL_A_BC_Uni_Regressions.csv")
+write.csv(m.a.uvpm.uni.reg, file = "MTL_A_UVPM_Uni_Regressions.csv")
+write.csv(m.a.data, file = "montreal_annual_data.csv")
+write.csv(m.a.data.stan, file = "montreal_annual_standardized_data.csv")
+
+formattable(m.a.bc.uni.reg)
+formattable(m.a.uvpm.uni.reg)
+
+
+#I saw two of the NPRI_Nox had same values in the automated regression. Wanted to make sure the automation worked correctly
+summary(lm(data = m.a.data.stan, bc_conc ~ NPRI_Nox_300m))
+summary(lm(data = m.a.data.stan, bc_conc ~ NPRI_Nox_200m))
+#all the values are the same
+all_equal(m.a.data.stan$NPRI_Nox_300m, m.a.data.stan$NPRI_Nox_200m)
+all_equal(m.a.data$NPRI_Nox_300m, m.a.data$NPRI_Nox_200m)
+
+#check one of each to make sure it worked
+summary(lm(data = m.a.data.stan, formula = bc_conc ~ rail_200m))
+summary(lm(data = m.a.data.stan, formula = uvpm_conc ~ pop_500m))
+#tried to figure out how to get more info out of the regressions. Not sure if I need more, but curious. The code turns the regression into a tibble like this:
+tidy(lm(data = m.a.data.stan, formula = uvpm_conc ~ pop_500m))
+tidy(confint(lm(data = m.a.data.stan, formula = uvpm_conc ~ pop_500m)))
+
+#see how many of each are p < 0.05
+nrow(subset(m.a.bc.uni.reg, P.Value <= 0.05))
+nrow(subset(m.a.uvpm.uni.reg, P.Value <= 0.05))
+#6 BC and 5 uvpm
+
+
+formattable(subset(m.a.bc.uni.reg, P.Value <= 0.05))
+formattable(subset(m.a.uvpm.uni.reg, P.Value <= 0.05))
+#sooooo not a lot. Can compare. Maybe these are the most important? We'll see.....
+
+
+
+# MTL Annual Uni Regressionts - Outliers ########
+
+filter(m.a.data, a.bc_conc > 4000)
+#3 outliers above 4000, MTL_space_106, 112, 134
+
+#do unis without all 3 outliers
+#do simple regressions on bc_conc for each of the determinants
+
+m.a.outlier.level <- 4000
+m.a.u4k.bc.uni.beta.p <- subset(long.m.a.data.stan, bc_conc < m.a.outlier.level) %>%
+  group_by(variable) %>%
+  do(tidy(lm(bc_conc ~ value, .))) %>%
+  filter(term == "value") %>%
+  mutate(Beta = as.character(round(estimate, 2)), "P Value" = round(p.value, 3), SE = round(std.error, 1)) %>% 
+  select(Beta, SE, "P Value") %>% 
+  as.data.frame()
+#to get CIs
+m.a.u4k.bc.uni.cis <- subset(long.m.a.data.stan, bc_conc < m.a.outlier.level) %>%
+  group_by(variable) %>%
+  do(tidy(confint(lm(bc_conc ~ value, .)))) %>%
+  filter(.rownames == "value") %>%
+  mutate("2.5%" = as.character(round(X2.5.., 2)), "97.5%" = as.character(round(X97.5.., 2))) %>% 
+  select("2.5%", "97.5%") %>% 
+  as.data.frame()
+#get the R2
+m.a.u4k.bc.uni.r2 <- subset(long.m.a.data.stan, bc_conc < m.a.outlier.level) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared)
+
+#com_50 is NA, it gets included in the CIs and R2, but not in the beta.p for some reason. Need to cut it out. 
+setdiff(m.a.u4k.bc.uni.beta.p$variable, m.a.u4k.bc.uni.cis$variable)
+setdiff(m.a.u4k.bc.uni.cis$variable, m.a.u4k.bc.uni.beta.p$variable)
+describe(m.a.data.stan$com_50m)
+#it's all zeros and 1 high value. Not an informative variable.
+filter(m.a.u4k.bc.uni.beta.p, variable == "com_50m")
+filter(m.a.u4k.bc.uni.cis, variable == "com_50m")
+filter(m.a.u4k.bc.uni.r2, variable == "com_50m")
+#get rid of those rows
+#m.a.u4k.bc.uni.cis <- filter(m.a.u4k.bc.uni.cis, !is.na(`2.5%`))
+#m.a.u4k.bc.uni.r2 <- filter(m.a.u4k.bc.uni.r2, r.squared != 0)
+#better to insert instead
+m.a.u4k.bc.uni.beta.p <- add_row(m.a.u4k.bc.uni.beta.p, variable = setdiff(m.a.u4k.bc.uni.cis$variable, m.a.u4k.bc.uni.beta.p$variable), Beta = NA, SE = NA, `P Value` = NA, .after = which(is.na(m.a.u4k.bc.uni.cis$`2.5%`)))
+
+#put em together 
+m.a.u4k.bc.uni.reg <- data.frame(m.a.u4k.bc.uni.beta.p[ , c(1,2)], lapply(m.a.u4k.bc.uni.cis[ , c(2,3)], as.numeric), round(m.a.u4k.bc.uni.r2[ ,2], 5), m.a.u4k.bc.uni.beta.p[ , c(3,4)])
+m.a.u4k.bc.uni.reg$Beta <- as.numeric(m.a.u4k.bc.uni.reg$Beta)
+m.a.u4k.bc.uni.reg$P.Value <- as.numeric(m.a.u4k.bc.uni.reg$P.Value)
+
+str(m.a.u4k.bc.uni.reg)
+
+nrow(subset(m.a.u4k.bc.uni.reg, P.Value <= 0.05))
+nrow(subset(m.a.bc.uni.reg, P.Value <= 0.05))
+#6 with all data and 25 with the 3 over 4k outliers cut out
+
+formattable(m.a.u4k.bc.uni.reg)
+formattable(subset(m.a.u4k.bc.uni.reg, P.Value <= 0.05))
+#could do this all again for uvpm, but I'll wait until I hear back from Susannah re outliers
+
+
+
+
+#repeat for uvpm
+m.a.u4k.uvpm.uni.beta.p <- subset(long.m.a.data.stan, uvpm_conc < m.a.outlier.level) %>%
+  group_by(variable) %>%
+  do(tidy(lm(uvpm_conc ~ value, .))) %>%
+  filter(term == "value") %>%
+  mutate(Beta = as.character(round(estimate, 2)), "P Value" = round(p.value, 3), SE = round(std.error, 1)) %>% 
+  select(Beta, SE, "P Value") %>% 
+  as.data.frame()
+#to get CIs
+m.a.u4k.uvpm.uni.cis <- subset(long.m.a.data.stan, uvpm_conc < m.a.outlier.level) %>%
+  group_by(variable) %>%
+  do(tidy(confint(lm(uvpm_conc ~ value, .)))) %>%
+  filter(.rownames == "value") %>%
+  mutate("2.5%" = as.character(round(X2.5.., 2)), "97.5%" = as.character(round(X97.5.., 2))) %>% 
+  select("2.5%", "97.5%") %>% 
+  as.data.frame()
+#get the R2
+m.a.u4k.uvpm.uni.r2 <- subset(long.m.a.data.stan, uvpm_conc < m.a.outlier.level) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(uvpm_conc ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared)
+
+#com_50 is NA, it gets included in the CIs and R2, but not in the beta.p for some reason. Need to cut it out. 
+setdiff(m.a.u4k.uvpm.uni.beta.p$variable, m.a.u4k.uvpm.uni.cis$variable)
+setdiff(m.a.u4k.uvpm.uni.cis$variable, m.a.u4k.uvpm.uni.beta.p$variable)
+describe(m.a.data.stan$com_50m)
+#it's all zeros and 1 high value. Not an informative variable.
+filter(m.a.u4k.uvpm.uni.beta.p, variable == "com_50m")
+filter(m.a.u4k.uvpm.uni.cis, variable == "com_50m")
+filter(m.a.u4k.uvpm.uni.r2, variable == "com_50m")
+#get rid of those rows
+#m.a.u4k.uvpm.uni.cis <- filter(m.a.u4k.uvpm.uni.cis, !is.na(`2.5%`))
+#m.a.u4k.uvpm.uni.r2 <- filter(m.a.u4k.uvpm.uni.r2, r.squared != 0)
+#better for later to add a row with NA
+m.a.u4k.uvpm.uni.beta.p <- add_row(m.a.u4k.uvpm.uni.beta.p, variable = setdiff(m.a.u4k.uvpm.uni.cis$variable, m.a.u4k.uvpm.uni.beta.p$variable), Beta = NA, SE = NA, `P Value` = NA, .after = which(is.na(m.a.u4k.uvpm.uni.cis$`2.5%`)))
+
+
+#put em together 
+m.a.u4k.uvpm.uni.reg <- data.frame(m.a.u4k.uvpm.uni.beta.p[ , c(1,2)], lapply(m.a.u4k.uvpm.uni.cis[ , c(2,3)], as.numeric), round(m.a.u4k.uvpm.uni.r2[ ,2], 5), m.a.u4k.uvpm.uni.beta.p[ , c(3,4)])
+m.a.u4k.uvpm.uni.reg$Beta <- as.numeric(m.a.u4k.uvpm.uni.reg$Beta)
+
+nrow(subset(m.a.u4k.uvpm.uni.reg, P.Value <= 0.05))
+nrow(subset(m.a.uvpm.uni.reg, P.Value <= 0.05))
+#5 with all data and 18 with the 3 over 4k outliers cut out
+
+formattable(m.a.u4k.uvpm.uni.reg)
+formattable(subset(m.a.u4k.uvpm.uni.reg, P.Value <= 0.05))
+
+
+write.csv(m.a.u4k.bc.uni.reg, file = "MTL_A_u4k_BC_Uni_Regressions.csv")
+write.csv(m.a.u4k.uvpm.uni.reg, file = "MTL_A_u4k_UVPM_Uni_Regressions.csv")
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1404,7 +1775,7 @@ to.bc.uni.r2 <- long.t.s.data.stan %>%
   unnest(results) %>% 
   select(variable, r.squared)
 
-options(scipen=999)
+
 #put em together 
 to.bc.uni.reg <- data.frame(to.bc.uni.beta.p[ , c(1,2)], lapply(to.bc.uni.cis[ , c(2,3)], as.numeric), round(to.bc.uni.r2[ ,2], 5), to.bc.uni.beta.p[ , c(3,4)])
 to.bc.uni.reg$Beta <- as.numeric(to.bc.uni.reg$Beta)
@@ -1474,7 +1845,7 @@ tidy(confint(lm(data = t.s.data.stan, formula = uvpm_conc ~ pop_500m)))
 describe(subset(t.s.outcomes, BC_ng_m3 > 10000))
 #it's TO_space_94, it's a UPAS, it ran for 10 days
 t.outlier.level<- 10000
-u10k.to.bc.uni.beta.p <- subset(long.t.s.data.stan, bc_conc < t.outlier.level) %>%
+to.u10k.bc.uni.beta.p <- subset(long.t.s.data.stan, bc_conc < t.outlier.level) %>%
   group_by(variable) %>%
   do(tidy(lm(bc_conc ~ value, .))) %>%
   filter(term == "value") %>%
@@ -1482,7 +1853,7 @@ u10k.to.bc.uni.beta.p <- subset(long.t.s.data.stan, bc_conc < t.outlier.level) %
   select(Beta, SE, "P Value") %>% 
   as.data.frame()
 #to get CIs
-u10k.to.bc.uni.cis <- subset(long.t.s.data.stan, bc_conc < t.outlier.level)  %>%
+to.u10k.bc.uni.cis <- subset(long.t.s.data.stan, bc_conc < t.outlier.level)  %>%
   group_by(variable) %>%
   do(tidy(confint(lm(bc_conc ~ value, .)))) %>%
   filter(.rownames == "value") %>%
@@ -1490,7 +1861,7 @@ u10k.to.bc.uni.cis <- subset(long.t.s.data.stan, bc_conc < t.outlier.level)  %>%
   select("2.5%", "97.5%") %>% 
   as.data.frame()
 #get the R2
-u10k.to.bc.uni.r2 <- subset(long.t.s.data.stan, bc_conc < t.outlier.level)  %>% 
+to.u10k.bc.uni.r2 <- subset(long.t.s.data.stan, bc_conc < t.outlier.level)  %>% 
   nest(-variable) %>% 
   mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)),
          results = map(fit, glance)) %>% 
@@ -1499,57 +1870,69 @@ u10k.to.bc.uni.r2 <- subset(long.t.s.data.stan, bc_conc < t.outlier.level)  %>%
 
 
 #put em together 
-u10k.to.bc.uni.reg <- data.frame(u10k.to.bc.uni.beta.p[ , c(1,2)], lapply(u10k.to.bc.uni.cis[ , c(2,3)], as.numeric), round(u10k.to.bc.uni.r2[ ,2], 5), u10k.to.bc.uni.beta.p[ , c(3,4)])
-u10k.to.bc.uni.reg$Beta <- as.numeric(u10k.to.bc.uni.reg$Beta)
-str(u10k.to.bc.uni.reg)
+to.u10k.bc.uni.reg <- data.frame(to.u10k.bc.uni.beta.p[ , c(1,2)], lapply(to.u10k.bc.uni.cis[ , c(2,3)], as.numeric), round(to.u10k.bc.uni.r2[ ,2], 5), to.u10k.bc.uni.beta.p[ , c(3,4)])
+to.u10k.bc.uni.reg$Beta <- as.numeric(to.u10k.bc.uni.reg$Beta)
+str(to.u10k.bc.uni.reg)
 
-formattable(u10k.to.bc.uni.reg)
+formattable(to.u10k.bc.uni.reg)
 nrow(subset(to.bc.uni.reg, P.Value <= 0.05))
-nrow(subset(u10k.to.bc.uni.reg, P.Value <= 0.05))
+nrow(subset(to.u10k.bc.uni.reg, P.Value <= 0.05))
 #removing the outlier takes it from 63 pvals, ot 73 pvals
 
+
+#repeat for uvpm
+to.u10k.uvpm.uni.beta.p <- subset(long.t.s.data.stan, uvpm_conc < t.outlier.level) %>%
+  group_by(variable) %>%
+  do(tidy(lm(uvpm_conc ~ value, .))) %>%
+  filter(term == "value") %>%
+  mutate(Beta = as.character(round(estimate, 2)), "P Value" = round(p.value, 3), SE = round(std.error, 1)) %>% 
+  select(Beta, SE, "P Value") %>% 
+  as.data.frame()
+#to get CIs
+to.u10k.uvpm.uni.cis <- subset(long.t.s.data.stan, uvpm_conc < t.outlier.level)  %>%
+  group_by(variable) %>%
+  do(tidy(confint(lm(uvpm_conc ~ value, .)))) %>%
+  filter(.rownames == "value") %>%
+  mutate("2.5%" = as.character(round(X2.5.., 2)), "97.5%" = as.character(round(X97.5.., 2))) %>% 
+  select("2.5%", "97.5%") %>% 
+  as.data.frame()
+#get the R2
+to.u10k.uvpm.uni.r2 <- subset(long.t.s.data.stan, uvpm_conc < t.outlier.level)  %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(uvpm_conc ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared)
+
+
+#put em together 
+to.u10k.uvpm.uni.reg <- data.frame(to.u10k.uvpm.uni.beta.p[ , c(1,2)], lapply(to.u10k.uvpm.uni.cis[ , c(2,3)], as.numeric), round(to.u10k.uvpm.uni.r2[ ,2], 5), to.u10k.uvpm.uni.beta.p[ , c(3,4)])
+to.u10k.uvpm.uni.reg$Beta <- as.numeric(to.u10k.uvpm.uni.reg$Beta)
+str(to.u10k.uvpm.uni.reg)
+
+formattable(to.u10k.uvpm.uni.reg)
+nrow(subset(to.uvpm.uni.reg, P.Value <= 0.05))
+nrow(subset(to.u10k.uvpm.uni.reg, P.Value <= 0.05))
+#removing the outlier takes it from 54 pvals, ot 61 pvals
+
+write.csv(to.u10k.bc.uni.reg, file = "TO_u10k_BC_Uni_Regressions.csv")
+write.csv(to.u10k.uvpm.uni.reg, file = "TO_u10k_UVPM_Uni_Regressions.csv")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #MTL+TO Summer Pool Uni Reg #####
-ncol(m.s.data.stan)
-ncol(t.s.data.stan)
-ncol(m.s.data)
-ncol(t.s.data)
-#they don't have the same number of variables. Recall that I removed 6 columns from the t.s.data.stan because all the values within the column were the same. Need to keep that column in now that Montreal will add variability ya?. 
-
-#these are in m.s.data, but not in t.s.data
-setdiff(colnames(m.s.data.stan), colnames(t.s.data))
-#these are in t.s.data, but not in m.s.data
-setdiff(colnames(t.s.data), colnames(m.s.data))
-#visual check if I want
-cbind(colnames(m.s.data), colnames(t.s.data))
-
-#take out the non-matching columns
-m.s.data.pool <- m.s.data
-m.s.data.pool$water_50m <- NULL
-m.s.data.pool$highway_50m <- NULL
-m.s.data.pool$bus_stop_200m <- NULL
-m.s.data.pool$bus_stop_100m <- NULL
-
-t.s.data.pool <- t.s.data
-t.s.data.pool$NPRI_PM_100m <- NULL
-t.s.data.pool$NPRI_Nox_100m <- NULL
-
-str(t.s.data.pool)  
-
-mts.data.pool <- as.data.frame(rbind(m.s.data.pool, t.s.data.pool))
-head(mts.data.pool[,1:4])
-mts.data.pool$city <- c(rep("MTL", nrow(m.s.data.pool)), rep("TO", nrow(t.s.data.pool)))
-describe(mts.data.pool$city)
-
-#standardize them
-colnames(mts.data.pool)[c(-1,-2,-3,-4, -ncol(mts.data.pool))]
-summary(scale(mts.data.pool[ , c(-1,-2,-3,-4, -ncol(mts.data.pool))]))
-mts.data.pool.stan <- data.frame(mts.data.pool[ , 1:4], city =mts.data.pool$city, scale(mts.data.pool[ , c(-1,-2,-3,-4,-ncol(mts.data.pool))]))
-summary(mts.data.pool.stan)
-head(mts.data.pool.stan[ ,1:5])
-tail(mts.data.pool.stan[ ,1:5])
-
-#can see in the summary that all the means are zero
-apply(mts.data.pool.stan, 2, sd)
 
 
 #now run all the uni regressions. Not sure if the pooled will be an MTL annual average pooled with TO or MTL summer pooled with TO. THis is MTL summer with TO
@@ -1557,13 +1940,11 @@ str(mts.data.pool.stan)
 long.mts.data.pool.stan <- melt(mts.data.pool.stan, id.vars = c("f.id", "bc_conc", "uvpm_conc", "good_data", "city"))
 str(long.mts.data.pool.stan)
 
-#trying out this: https://datascienceplus.com/how-to-do-regression-analysis-for-multiple-independent-or-dependent-variables/
 #check to make sure nothing is too squirrelly
 summary(long.mts.data.pool.stan)
 nrow(long.mts.data.pool.stan)/nrow(mts.data.pool.stan)
 
-####Univariate regressions. Found various code that will run all the univariate at once, but each one gives diferent outputs. I'm just going to frankenstein them together instead of finding an elegant solution
-#https://stackoverflow.com/questions/51567914/hundreds-of-linear-regressions-that-run-by-group-in-r
+###Univariate regressions. Found various code that will run all the univariate at once, but each one gives diferent outputs. I'm just going to frankenstein them together instead of finding an elegant solution
 
 #do simple regressions on bc_conc for each of the determinants
 mts.pool.bc.uni.beta.p <- long.mts.data.pool.stan %>%
@@ -1594,7 +1975,56 @@ mts.pool.bc.uni.reg <- data.frame(mts.pool.bc.uni.beta.p[ , c(1,2)], lapply(mts.
 mts.pool.bc.uni.reg$Beta <- as.numeric(mts.pool.bc.uni.reg$Beta)
 str(mts.pool.bc.uni.reg)
 formattable(mts.pool.bc.uni.reg)
-#could do this all again for uvpm, but I'll wait until I hear back re: how to pool
+
+#repat for uvpm
+#do simple regressions on uvpm_conc for each of the determinants
+mts.pool.uvpm.uni.beta.p <- long.mts.data.pool.stan %>%
+  group_by(variable) %>%
+  do(tidy(lm(uvpm_conc ~ value, .))) %>%
+  filter(term == "value") %>%
+  mutate(Beta = as.character(round(estimate, 2)), "P Value" = round(p.value, 3), SE = round(std.error, 1)) %>% 
+  select(Beta, SE, "P Value") %>% 
+  as.data.frame()
+#to get CIs
+mts.pool.uvpm.uni.cis <- long.mts.data.pool.stan %>%
+  group_by(variable) %>%
+  do(tidy(confint(lm(uvpm_conc ~ value, .)))) %>%
+  filter(.rownames == "value") %>%
+  mutate("2.5%" = as.character(round(X2.5.., 2)), "97.5%" = as.character(round(X97.5.., 2))) %>% 
+  select("2.5%", "97.5%") %>% 
+  as.data.frame()
+#get the R2
+mts.pool.uvpm.uni.r2 <- long.mts.data.pool.stan %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(uvpm_conc ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared)
+
+#put em together 
+mts.pool.uvpm.uni.reg <- data.frame(mts.pool.uvpm.uni.beta.p[ , c(1,2)], lapply(mts.pool.uvpm.uni.cis[ , c(2,3)], as.numeric), round(mts.pool.uvpm.uni.r2[ ,2], 5), mts.pool.uvpm.uni.beta.p[ , c(3,4)])
+mts.pool.uvpm.uni.reg$Beta <- as.numeric(mts.pool.uvpm.uni.reg$Beta)
+str(mts.pool.uvpm.uni.reg)
+formattable(mts.pool.uvpm.uni.reg)
+
+write.csv(mts.pool.bc.uni.reg, file = "M_T_Pool_BC_Uni_Regressions.csv")
+write.csv(mts.pool.uvpm.uni.reg, file = "M_T_Pool_UVPM_Uni_Regressions.csv")
+write.csv(mts.data.pool, file = "mtl_to_pooled_summer_data.csv")
+write.csv(mts.data.pool.stan, file = "mtl_to_pooled_summer_standardized_data.csv")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # MTL+TO Summer Pool Uni Reg -Outliers #######
 
@@ -1636,7 +2066,49 @@ nrow(subset(u10k.mts.pool.bc.uni.reg, P.Value <= 0.05))
 
 formattable(subset(mts.pool.bc.uni.reg, P.Value <= 0.05))
 formattable(subset(u10k.mts.pool.bc.uni.reg, P.Value <= 0.05))
-#could do this all again for uvpm, but I'll wait until I hear back from Susannah re outliers
+
+
+
+#repeat for uvpm
+u10k.mts.pool.uvpm.uni.beta.p <- subset(long.mts.data.pool.stan, uvpm_conc < mts.pool.outlier.level) %>%
+  group_by(variable) %>%
+  do(tidy(lm(uvpm_conc ~ value, .))) %>%
+  filter(term == "value") %>%
+  mutate(Beta = as.character(round(estimate, 2)), "P Value" = round(p.value, 3), SE = round(std.error, 1)) %>% 
+  select(Beta, SE, "P Value") %>% 
+  as.data.frame()
+#to get CIs
+u10k.mts.pool.uvpm.uni.cis <- subset(long.mts.data.pool.stan, uvpm_conc < mts.pool.outlier.level) %>%
+  group_by(variable) %>%
+  do(tidy(confint(lm(uvpm_conc ~ value, .)))) %>%
+  filter(.rownames == "value") %>%
+  mutate("2.5%" = as.character(round(X2.5.., 2)), "97.5%" = as.character(round(X97.5.., 2))) %>% 
+  select("2.5%", "97.5%") %>% 
+  as.data.frame()
+#get the R2
+u10k.mts.pool.uvpm.uni.r2 <- subset(long.mts.data.pool.stan, uvpm_conc < mts.pool.outlier.level) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(uvpm_conc ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared)
+
+#put em together 
+u10k.mts.pool.uvpm.uni.reg <- data.frame(u10k.mts.pool.uvpm.uni.beta.p[ , c(1,2)], lapply(u10k.mts.pool.uvpm.uni.cis[ , c(2,3)], as.numeric), round(u10k.mts.pool.uvpm.uni.r2[ ,2], 5), u10k.mts.pool.uvpm.uni.beta.p[ , c(3,4)])
+u10k.mts.pool.uvpm.uni.reg$Beta <- as.numeric(u10k.mts.pool.uvpm.uni.reg$Beta)
+str(u10k.mts.pool.uvpm.uni.reg)
+formattable(u10k.mts.pool.uvpm.uni.reg)
+
+nrow(subset(mts.pool.uvpm.uni.reg, P.Value <= 0.05))
+nrow(subset(u10k.mts.pool.uvpm.uni.reg, P.Value <= 0.05))
+#there are 51 with the outlier and 31 without the outlier
+
+formattable(subset(mts.pool.uvpm.uni.reg, P.Value <= 0.05))
+formattable(subset(u10k.mts.pool.uvpm.uni.reg, P.Value <= 0.05))
+
+
+write.csv(u10k.mts.pool.bc.uni.reg, file = "M_T_Pool_u10k_BC_Uni_Regressions.csv")
+write.csv(u10k.mts.pool.uvpm.uni.reg, file = "M_T_Pool_u10k_UVPM_Uni_Regressions.csv")
 
 
 
@@ -1649,7 +2121,7 @@ str(long.m.s.data.stan)
 describe(long.m.s.data.stan$bc_conc)
 
 #####MTL Summer
-#super slow, but good. Only slow when I display the ggplot, entering as below is fast. Saved as 4k x 4k and then look at the image (file name MTL.s.bc.v.var.plot.fit.alldata.png)
+#super slow, but good. Only slow when I display the ggplot, entering as below is fast. Saved as 4k x 4k and then look at the image (file name MTL.s.bc.v.var.plot.loess.alldata.png)
 m.s.bc.xy.fit.plot.alldata <- ggplot(data = long.m.s.data.stan, aes(x = value, y = bc_conc)) +
   ggtitle("Montreal Summer Variables vs BC") +
   geom_point() +
@@ -1659,11 +2131,31 @@ m.s.bc.xy.fit.plot.alldata <- ggplot(data = long.m.s.data.stan, aes(x = value, y
                   method.args = list(formula = y ~ x),
                   aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
                                       stat(r.squared), stat(p.value))), parse = TRUE)
+#repeat for uvpm, saved as MTL.s.uvpm.v.var.plot.loess.alldata.png
+m.s.uvpm.xy.fit.plot.alldata <- ggplot(data = long.m.s.data.stan, aes(x = value, y = uvpm_conc)) +
+  ggtitle("Montreal Summer Variables vs UVPM") +
+  geom_point() +
+  facet_wrap(~ variable, scales = "free") +
+  stat_smooth(method="loess") + 
+  stat_fit_glance(method = "lm",
+                  method.args = list(formula = y ~ x),
+                  aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
+                                      stat(r.squared), stat(p.value))), parse = TRUE)
 
-#That one 40k point is driving a lot of stuff. Saved as 4k x 4k and then look at the image (file name MTL.s.bc.v.var.plot.fit.u5k.png)
+#That one 40k point is driving a lot of stuff. Saved as 4k x 4k and then look at the image (file name MTL.s.bc.v.var.plot.loess.u5k.png)
 nrow(subset(long.m.s.data.stan, bc_conc > 5000))
-m.s.bc.xy.fit.plot.u5k <- ggplot(data = subset(long.m.s.data.stan, bc_conc < 5000), aes(x = value, y = bc_conc)) +
+m.s.bc.xy.fit.plot.u4k <- ggplot(data = subset(long.m.s.data.stan, bc_conc < 4000), aes(x = value, y = bc_conc)) +
   ggtitle("Montreal Summer Variables vs BC (4 outliers over 5,000 removed)") +
+  geom_point() + 
+  facet_wrap(~ variable, scales = "free") +
+  stat_smooth(method="loess") + 
+  stat_fit_glance(method = "lm",
+                  method.args = list(formula = y ~ x),
+                  aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
+                                      stat(r.squared), stat(p.value))), parse = TRUE)
+#repeat for uvpm, saved as MTL.s.uvpm.v.var.plot.loess.u5k.png
+m.s.uvpm.xy.fit.plot.u4k <- ggplot(data = subset(long.m.s.data.stan, uvpm_conc < 4000), aes(x = value, y = uvpm_conc)) +
+  ggtitle("Montreal Summer Variables vs UVPM (4 outliers over 5,000 removed)") +
   geom_point() + 
   facet_wrap(~ variable, scales = "free") +
   stat_smooth(method="loess") + 
@@ -1697,6 +2189,53 @@ m.w.uvpm.xy.fit.plot.alldata <- ggplot(data = long.m.w.data.stan, aes(x = value,
                   method.args = list(formula = y ~ x),
                   aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
                                       stat(r.squared), stat(p.value))), parse = TRUE)
+#no outliers, no seperate plot with outliers removed. 
+
+######MTL Annual
+
+#super slow, but good. Only slow when I display the ggplot, entering as below is fast. Saved as 4k x 4k and then look at the image (file name MTL.a.bc.v.var.plot.loess.png)
+m.a.bc.xy.fit.plot.alldata <- ggplot(data = long.m.a.data.stan, aes(x = value, y = bc_conc)) +
+  ggtitle("Montreal Annual Variables vs BC") +
+  geom_point() +
+  facet_wrap(~ variable, scales = "free") +
+  stat_smooth(method="loess") + 
+  stat_fit_glance(method = "lm",
+                  method.args = list(formula = y ~ x),
+                  aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
+                                      stat(r.squared), stat(p.value))), parse = TRUE)
+#(file name MTL.a.uvpm.v.var.plot.loess.png)
+m.a.uvpm.xy.fit.plot.alldata <- ggplot(data = long.m.a.data.stan, aes(x = value, y = uvpm_conc)) +
+  ggtitle("Montreal Annual Variables vs UVPM") +
+  geom_point() +
+  facet_wrap(~ variable, scales = "free") +
+  stat_smooth(method="loess") + 
+  stat_fit_glance(method = "lm",
+                  method.args = list(formula = y ~ x),
+                  aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
+                                      stat(r.squared), stat(p.value))), parse = TRUE)
+
+#three points above 4k are maybe driving relationships (file name MTL.a.bc.v.var.plot.loess.u4k.png)
+nrow(subset(long.m.a.data.stan, bc_conc > 4000))
+m.a.bc.xy.fit.plot.u4k <- ggplot(data = subset(long.m.a.data.stan, bc_conc < 4000), aes(x = value, y = bc_conc)) +
+  ggtitle("Montreal Annual Variables vs BC (3 outliers over 4,000 removed)") +
+  geom_point() + 
+  facet_wrap(~ variable, scales = "free") +
+  stat_smooth(method="loess") + 
+  stat_fit_glance(method = "lm",
+                  method.args = list(formula = y ~ x),
+                  aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
+                                      stat(r.squared), stat(p.value))), parse = TRUE)
+#repeat for uvpm, saved as MTL.a.uvpm.v.var.plot.loess.u4k.png
+m.a.uvpm.xy.fit.plot.u4k <- ggplot(data = subset(long.m.a.data.stan, uvpm_conc < 4000), aes(x = value, y = uvpm_conc)) +
+  ggtitle("Montreal Annual Variables vs UVPM (3 outliers over 4,000 removed)") +
+  geom_point() + 
+  facet_wrap(~ variable, scales = "free") +
+  stat_smooth(method="loess") + 
+  stat_fit_glance(method = "lm",
+                  method.args = list(formula = y ~ x),
+                  aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
+                                      stat(r.squared), stat(p.value))), parse = TRUE)
+
 
 ####MTL Summer Log
 
@@ -1816,7 +2355,7 @@ ggplot(data = subset(long.m.s.data.stan[(nnn*16*9+1):nrow(long.m.s.data.stan), ]
 
 ########TO plots, start with just scatter plots of each variable vs bc. Add fit lines and p values and R2
 str(long.t.s.data.stan)
-#super slow, but good. Only slow when I display the ggplot, entering as below is fast. Saved as 4k x 4k and then look at the image (file name t.bc.xy.plot.alldata.png)
+#super slow, but good. Only slow when I display the ggplot, entering as below is fast. Saved as 4k x 4k and then look at the image (file name TO.bc.v.var.plot.loess.alldata.png)
 t.bc.xy.fit.plot.alldata <- ggplot(data = long.t.s.data.stan, aes(x = value, y = bc_conc)) +
   ggtitle("Toronto Summer Variables vs BC") +
   geom_point() +
@@ -1828,7 +2367,19 @@ t.bc.xy.fit.plot.alldata <- ggplot(data = long.t.s.data.stan, aes(x = value, y =
                                       stat(r.squared), stat(p.value))), parse = TRUE)
 #that one 30k point is near zero for all determinants except rail. That's what's driving everything. 
 
-#Remove 1 outlier. Saved as 4k x 4k and then look at the image (file name t.bc.xy.plot.u10k.png)
+#repeat for uvpm, saved as TO.uvpm.v.var.plot.loess.alldata.png
+t.uvpm.xy.fit.plot.alldata <- ggplot(data = long.t.s.data.stan, aes(x = value, y = uvpm_conc)) +
+  ggtitle("Toronto Summer Variables vs UVPM") +
+  geom_point() +
+  facet_wrap(~ variable, scales = "free") +
+  stat_smooth(method="loess") + 
+  stat_fit_glance(method = "lm",
+                  method.args = list(formula = y ~ x),
+                  aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
+                                      stat(r.squared), stat(p.value))), parse = TRUE)
+
+
+#Remove 1 outlier. Saved as 4k x 4k and then look at the image (file name TO.bc.v.var.plot.loess.u10k.png)
 nrow(subset(long.t.s.data.stan, bc_conc > 10000))
 t.bc.xy.fit.plot.u10k <- ggplot(data = subset(long.t.s.data.stan, bc_conc < 10000), aes(x = value, y = bc_conc)) +
   ggtitle("Toronto Summer Variables vs BC (1 outlier removed") +
@@ -1840,6 +2391,18 @@ t.bc.xy.fit.plot.u10k <- ggplot(data = subset(long.t.s.data.stan, bc_conc < 1000
                   aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
                                       stat(r.squared), stat(p.value))), parse = TRUE)
 #a little easier to see the spread of the data witht he 1 outlier removed. As noted in an earlier section, removal of the outlier gives 9 more pvals under 0.05
+
+#repeat with UVPM saved as TO.uvpm.v.var.plot.loess.u10k.png
+t.uvpm.xy.fit.plot.u10k <- ggplot(data = subset(long.t.s.data.stan, uvpm_conc < 10000), aes(x = value, y = uvpm_conc)) +
+  ggtitle("Toronto Summer Variables vs UVPM (1 outlier removed") +
+  geom_point() + 
+  facet_wrap(~ variable, scales = "free") +
+  stat_smooth(method="loess") + 
+  stat_fit_glance(method = "lm",
+                  method.args = list(formula = y ~ x),
+                  aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
+                                      stat(r.squared), stat(p.value))), parse = TRUE)
+
 
 #in case we want them on separate sheets. This was oroginally with a longer data set (100 rows), but now it is shorter, so the 1:1600 etc need to be changed
 ggplot(data = subset(long.t.s.data.stan[1:1600, ], bc_conc < 10000), aes(x = value, y = bc_conc)) +
@@ -1938,21 +2501,42 @@ ggplot(data = subset(long.t.s.data.stan[14401:14800, ], bc_conc < 10000), aes(x 
 ########MTL plots, start with just scatter plots of each variable vs bc. Add fit lines and p values and R2
 str(long.mts.data.pool.stan)
 describe(long.mts.data.pool.stan$bc_conc)
-#super slow, but good. Only slow when I display the ggplot, entering as below is fast. Saved as 4k x 4k and then look at the image (file name mts.pool.bc.v.var.plot.fit.u10k)
+#super slow, but good. Only slow when I display the ggplot, entering as below is fast. Saved as 4k x 4k and then look at the image (file name MTS.pool.bc.v.var.plot.loess.alldata.png)
 mts.pool.bc.xy.fit.plot.alldata <- ggplot(data = long.mts.data.pool.stan, aes(x = value, y = bc_conc)) +
   ggtitle("Pooled Summer Variables vs BC") +
   geom_point() +
   facet_wrap(~ variable, scales = "free") +
-  stat_smooth(method="lm") + 
+  stat_smooth(method="loess") + 
+  stat_fit_glance(method = "lm",
+                  method.args = list(formula = y ~ x),
+                  aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
+                                      stat(r.squared), stat(p.value))), parse = TRUE)
+#repeat for uvpm, saved as MTS.pool.uvpm.v.var.plot.loess.alldata.png
+mts.pool.uvpm.xy.fit.plot.alldata <- ggplot(data = long.mts.data.pool.stan, aes(x = value, y = uvpm_conc)) +
+  ggtitle("Pooled Summer Variables vs UVPM") +
+  geom_point() +
+  facet_wrap(~ variable, scales = "free") +
+  stat_smooth(method="loess") + 
   stat_fit_glance(method = "lm",
                   method.args = list(formula = y ~ x),
                   aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
                                       stat(r.squared), stat(p.value))), parse = TRUE)
 
-#That one 40k point might be driving a lot of stuff. Saved as 4k x 4k and then look at the image (file name mts.pool.bc.v.var.plot.fit.u10k)
+
+#That one 40k point might be driving a lot of stuff. Saved as 4k x 4k and then look at the image (file name MTS.pool.bc.v.var.plot.loess.u10k.png)
 nrow(subset(long.mts.data.pool.stan, bc_conc > 10000))
 mts.pool.bc.xy.fit.plot.u10k <- ggplot(data = subset(long.mts.data.pool.stan, bc_conc < 10000), aes(x = value, y = bc_conc)) +
-  ggtitle("Montreal+Toronto Summer Pooled Variables vs BC (4 outliers over 5,000 removed)") +
+  ggtitle("Montreal+Toronto Summer Pooled Variables vs BC (4 outliers over 10,000 removed)") +
+  geom_point() + 
+  facet_wrap(~ variable, scales = "free") +
+  stat_smooth(method="loess") + 
+  stat_fit_glance(method = "lm",
+                  method.args = list(formula = y ~ x),
+                  aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
+                                      stat(r.squared), stat(p.value))), parse = TRUE)
+#repeat for uvpm, saved as MTS.pool.uvpm.v.var.plot.loess.u10k.png
+mts.pool.uvpm.xy.fit.plot.u10k <- ggplot(data = subset(long.mts.data.pool.stan, uvpm_conc < 10000), aes(x = value, y = uvpm_conc)) +
+  ggtitle("Montreal+Toronto Summer Pooled Variables vs UVPM (4 outliers over 10,000 removed)") +
   geom_point() + 
   facet_wrap(~ variable, scales = "free") +
   stat_smooth(method="loess") + 
@@ -1961,10 +2545,193 @@ mts.pool.bc.xy.fit.plot.u10k <- ggplot(data = subset(long.mts.data.pool.stan, bc
                   aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
                                       stat(r.squared), stat(p.value))), parse = TRUE)
 
+
 #looks at the hists for NPRI_PM, NPRI_Nox, tot_traffic
 
-# Predictor Selection ######
 
+
+
+# Predictor Selection ######
+#there are five groups of uni regressions:
+  #MTL Summer
+  #MTL Winter
+  #MTL Annual
+  #TO Summer
+  #MTL+TO Summer Pooled
+#all except winter also have some outliers for which I have seperate regressions with outliers removed. 
+#all have uvpm
+#each of the five has a different number of variable (recal some were removed due to all being same value)
+
+#look at each of the five separately first, then look at them together
+#made a udf to put into apply
+outliers.3sd <- function(x) {
+  length(which(abs(x) > 3))
+}
+
+#look at BC and UVPM with and without outliers, include "max" and number over 3sd from mean to give an idea of outliers
+#the output is R2 value if p < 0.05, otherwise, it's NA
+m.s.uni.var.sel <- data.frame(Predictor = colnames(m.s.data.stan[ , 5:ncol(m.s.data.stan)]), MTL_S_BC = ifelse(m.s.bc.uni.reg$P.Value < 0.05, round(m.s.bc.uni.reg$r.squared, 2), NA), 
+            MTL_S_BC_u4k = ifelse(m.s.u4k.bc.uni.reg$P.Value < 0.05, round(m.s.u4k.bc.uni.reg$r.squared, 2), NA), 
+            MTL_S_UVPM = ifelse(m.s.uvpm.uni.reg$P.Value < 0.05, round(m.s.uvpm.uni.reg$r.squared, 2), NA),
+            MTL_S_UVPM_u4k = ifelse(m.s.u4k.uvpm.uni.reg$P.Value < 0.05, round(m.s.u4k.uvpm.uni.reg$r.squared, 2), NA),
+            pred_max_val = round(apply(m.s.data.stan[ , 5:ncol(m.s.data.stan)], 2, max), 1),
+            pred_over_3sd = apply(m.s.data.stan[ , 5:ncol(m.s.data.stan)], 2, outliers.3sd)
+            )
+
+m.w.uni.var.sel <- data.frame(Predictor = colnames(m.w.data.stan[ , 5:ncol(m.w.data.stan)]), 
+                              MTL_W_BC = ifelse(m.w.bc.uni.reg$P.Value < 0.05, round(m.w.bc.uni.reg$r.squared, 2), NA), 
+                                MTL_W_UVPM = ifelse(m.w.uvpm.uni.reg$P.Value < 0.05, round(m.w.uvpm.uni.reg$r.squared, 2), NA),
+                              pred_max_val = round(apply(m.w.data.stan[ , 5:ncol(m.w.data.stan)], 2, max), 1),
+                              pred_over_3sd = apply(m.w.data.stan[ , 5:ncol(m.w.data.stan)], 2, outliers.3sd)
+                                )
+
+m.a.uni.var.sel <- data.frame(Predictor = colnames(m.a.data.stan[ , 5:ncol(m.a.data.stan)]),
+                              MTL_A_BC = ifelse(m.a.bc.uni.reg$P.Value < 0.05, round(m.a.bc.uni.reg$r.squared, 2), NA), 
+                                MTL_A_BC_u4k = ifelse(m.a.u4k.bc.uni.reg$P.Value < 0.05, round(m.a.u4k.bc.uni.reg$r.squared, 2), NA), 
+                                MTL_A_UVPM = ifelse(m.a.uvpm.uni.reg$P.Value < 0.05, round(m.a.uvpm.uni.reg$r.squared, 2), NA),
+                                MTL_A_UVPM_u4k = ifelse(m.a.u4k.uvpm.uni.reg$P.Value < 0.05, round(m.a.u4k.uvpm.uni.reg$r.squared, 2), NA),
+                              pred_max_val = round(apply(m.a.data.stan[ , 5:ncol(m.a.data.stan)], 2, max), 1),
+                              pred_over_3sd = apply(m.a.data.stan[ , 5:ncol(m.a.data.stan)], 2, outliers.3sd)
+                                )
+
+to.uni.var.sel <- data.frame(Predictor = colnames(t.s.data.stan[ , 5:ncol(t.s.data.stan)]),
+                             TO_S_BC = ifelse(to.bc.uni.reg$P.Value < 0.05, round(to.bc.uni.reg$r.squared, 2), NA), 
+                                TO_S_BC_u10k = ifelse(to.u10k.bc.uni.reg$P.Value < 0.05, round(to.u10k.bc.uni.reg$r.squared, 2), NA), 
+                                TO_S_UVPM = ifelse(to.uvpm.uni.reg$P.Value < 0.05, round(to.uvpm.uni.reg$r.squared, 2), NA),
+                                TO_S_UVPM_u10k = ifelse(to.u10k.uvpm.uni.reg$P.Value < 0.05, round(to.u10k.uvpm.uni.reg$r.squared, 2), NA),
+                               pred_max_val = round(apply(t.s.data.stan[ , 5:ncol(t.s.data.stan)], 2, max), 1),
+                               pred_over_3sd = apply(t.s.data.stan[ , 5:ncol(t.s.data.stan)], 2, outliers.3sd)
+                                )
+
+mts.pool.uni.var.sel <- data.frame(Predictor = colnames(mts.data.pool.stan[ , 6:ncol(mts.data.pool.stan)]),
+                                   M_T_BC = ifelse(mts.pool.bc.uni.reg$P.Value < 0.05, round(mts.pool.bc.uni.reg$r.squared, 2), NA), 
+                             M_T_BC_u10k = ifelse(u10k.mts.pool.bc.uni.reg$P.Value < 0.05, round(u10k.mts.pool.bc.uni.reg$r.squared, 2), NA), 
+                             M_T_UVPM = ifelse(mts.pool.uvpm.uni.reg$P.Value < 0.05, round(mts.pool.uvpm.uni.reg$r.squared, 2), NA),
+                             M_T_UVPM_u10k = ifelse(u10k.mts.pool.uvpm.uni.reg$P.Value < 0.05, round(u10k.mts.pool.uvpm.uni.reg$r.squared, 2), NA),
+                             pred_max_val = round(apply(mts.data.pool.stan[ , 6:ncol(mts.data.pool.stan)], 2, max), 1),
+                             pred_over_3sd = apply(mts.data.pool.stan[ , 6:ncol(mts.data.pool.stan)], 2, outliers.3sd)
+                              )
+#function for the formattable bars, it just makes the bar width start with the smallest value in column instead of 0
+sd.scale <- function(x){
+  (x - min(x)) / (max(x) - min(x))
+}
+
+#MTL Summer, all and then the "all NA" filtered out
+formattable(m.s.uni.var.sel)
+formattable(filter(m.s.uni.var.sel, rowSums(is.na(m.s.uni.var.sel)) != 4),
+            list(`pred_max_val` = color_bar("#FA614B", fun = sd.scale),
+            `MTL_S_BC` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+            `MTL_S_BC_u4k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+            `MTL_S_UVPM` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+            `MTL_S_UVPM_u4k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue")))
+            )
+            )
+#MTL Winter, all and then the "all NA" filtered out, note no outliers
+formattable(m.w.uni.var.sel)
+formattable(filter(m.w.uni.var.sel, rowSums(is.na(m.w.uni.var.sel)) != 2),
+            list(`pred_max_val` = color_bar("#FA614B", fun = sd.scale),
+                 `MTL_W_BC` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `MTL_W_UVPM` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue")))
+                 )
+                )
+#MTL Annual, all and then the "all NA" filtered out
+formattable(m.a.uni.var.sel)
+formattable(filter(m.a.uni.var.sel, rowSums(is.na(m.a.uni.var.sel)) != 4),
+            list(`pred_max_val` = color_bar("#FA614B", fun = sd.scale),
+                 `MTL_A_BC` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `MTL_A_BC_u4k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `MTL_A_UVPM` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `MTL_A_UVPM_u4k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue")))
+                )
+              )
+
+#TO Summer, all and then the "all NA" filtered out
+formattable(to.uni.var.sel)
+formattable(filter(to.uni.var.sel, rowSums(is.na(to.uni.var.sel)) != 4),
+            list(`pred_max_val` = color_bar("#FA614B", fun = sd.scale),
+                 `TO_S_BC` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `TO_S_BC_u10k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `TO_S_UVPM` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `TO_S_UVPM_u10k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue")))
+                )
+              )
+#MTL+TO Summer Pooled, all and then the "all NA" filtered out
+formattable(mts.pool.uni.var.sel)
+formattable(filter(mts.pool.uni.var.sel, rowSums(is.na(mts.pool.uni.var.sel)) != 4),
+            list(`pred_max_val` = color_bar("#FA614B", fun = sd.scale),
+                 `M_T_BC` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `M_T_BC_u10k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `M_T_UVPM` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `M_T_UVPM_u10k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue")))
+                )
+              )
+
+#export the tables to the project folder so they can be called up by the RMD file. I'm exporting the raw files as csv, that'll be a bit more code in markdown, but porbablly better for control 
+
+
+
+
+
+
+str(m.s.uni.var.sel)
+str(filter(m.s.uni.var.sel, rowSums(is.na(m.s.uni.var.sel)) != 4))
+
+formattable(m.w.uni.var.sel)
+formattable(m.a.uni.var.sel)
+formattable(to.uni.var.sel)
+formattable(mts.pool.uni.var.sel)
+
+filter(m.s.uni.var.sel, !is.na(m.s.uni.var.sel[ , 1]) && !is.na(m.s.uni.var.sel[ , 2]) && !is.na(m.s.uni.var.sel[ , 3]) && !is.na(m.s.uni.var.sel[ , 4]))
+
+
+filter(m.s.uni.var.sel, sum(m.s.uni.var.sel[ ,1:4]) > 0)
+str(m.s.uni.var.sel)
+filter_at
+
+outliers.3sd(t.s.data.stan$water_750m)
+
+apply(t.s.data.stan[ , 5:ncol(t.s.data.stan)], 2, outliers.3sd)
+
+length(which(abs(t.s.data.stan$water_750m) > 3))
+
+m.s.determinants %>% ncol
+t.s.determinants %>% ncol()
+
+setdiff(colnames(m.s.determinants), colnames(t.s.determinants))
+setdiff(colnames(t.s.determinants), colnames(m.s.determinants))
+
+colnames(m.s.determinants[ ,1:5])
+colnames(t.s.determinants[ ,1:5])
+
+m.s.bc.uni.reg %>% nrow
+m.s.uvpm.uni.reg
+
+m.w.bc.uni.reg %>% nrow
+m.w.uvpm.uni.reg 
+
+m.a.bc.uni.reg %>% nrow
+m.a.uvpm.uni.reg
+
+to.bc.uni.reg %>% nrow
+to.uvpm.uni.reg
+
+mts.pool.bc.uni.reg %>% nrow
+mts.pool.uvpm.uni.reg
+
+#tried to do this as a data frame, but some are of differing lenghts (recall some varaibles were removed for some of the unis)
+uni.vars <- cbind(MTL_S_BC = ifelse(m.s.bc.uni.reg$P.Value < 0.05, as.character(m.s.bc.uni.reg$variable), NA), 
+           MTL_S_UVPM = ifelse(m.s.uvpm.uni.reg$P.Value < 0.05, as.character(m.s.uvpm.uni.reg$variable), NA),
+           MTL_W_BC = ifelse(m.w.bc.uni.reg$P.Value < 0.05, as.character(m.w.bc.uni.reg$variable), NA), 
+           MTL_W_UVPM = ifelse(m.w.uvpm.uni.reg$P.Value < 0.05, as.character(m.w.uvpm.uni.reg$variable), NA),
+           MTL_A_BC = ifelse(m.a.bc.uni.reg$P.Value < 0.05, as.character(m.a.bc.uni.reg$variable), NA), 
+           MTL_A_UVPM = ifelse(m.a.uvpm.uni.reg$P.Value < 0.05, as.character(m.a.uvpm.uni.reg$variable), NA),
+           TO_S_BC = ifelse(to.bc.uni.reg$P.Value < 0.05, as.character(to.bc.uni.reg$variable), NA), 
+           TO_S_UVPM = ifelse(to.uvpm.uni.reg$P.Value < 0.05, as.character(to.uvpm.uni.reg$variable), NA),
+           MTS_P_BC = ifelse(mts.pool.bc.uni.reg$P.Value < 0.05, as.character(mts.pool.bc.uni.reg$variable), NA), 
+           MTS_P_UVPM = ifelse(mts.pool.uvpm.uni.reg$P.Value < 0.05, as.character(mts.pool.uvpm.uni.reg$variable), NA)
+           )
+
+formattable(as.data.frame(uni.vars))
 
 # BIC ######
 
@@ -2019,15 +2786,20 @@ str(m.s.data.stan)
 #mtl summer YES -check
 #to summer YES - check
 #combined summer YES - check (both summer; plot todo)
-#mtl summer log YES - check
+#mtl winter -  YES - check
+#mtl average - YES - check 
+
+#mtl summer log YES - check....don't worry about log for now
 #to summer log YES  
 #combined summer log YES
 #mtl winter log Qs
 #mtl average log Qs
-#mtl winter Qs
-#mtl average Qs
+
 #to winter NOT A THING, no data
 #to average, NOT A THING due to no to winter data
 #to winter log NOT A THING, no data
 #to average, log NOT A THING due to no to winter data
 
+
+#DATA NOTES
+#open_750m appears twice, I think the second one (..25) is actually open_500m

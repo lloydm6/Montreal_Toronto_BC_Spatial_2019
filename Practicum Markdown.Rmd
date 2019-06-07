@@ -1,0 +1,369 @@
+---
+title: "Uni Regression Results"
+author: "Marshall"
+date: '2019-06-06'
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,          # don't show code
+  warning = FALSE,       # don't show warnings
+  message = FALSE,       # don't show messages (less serious warnings)
+  cache = FALSE         # set to TRUE to save results from last compilation
+                      )
+```
+
+```{r results='hide', fig.keep='none', include=FALSE}
+setwd("/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019")
+library(formattable)
+library(dplyr)
+library(DT)
+
+m.s.uni.var.sel <- read.csv("MTL TO markdown/m.s.uni.var.sel.csv")
+m.w.uni.var.sel <- read.csv("MTL TO markdown/m.w.uni.var.sel.csv")
+m.a.uni.var.sel <- read.csv("MTL TO markdown/m.a.uni.var.sel.csv")
+to.uni.var.sel <- read.csv("MTL TO markdown/to.uni.var.sel.csv")
+mts.pool.uni.var.sel <- read.csv("MTL TO markdown/mts.pool.uni.var.sel.csv")
+```
+
+# R^2^ Values of Predictor Variables From Uni Regressions
+The R^2^ value only shows up for predictors with p < 0.05. 
+
+NA for p > 0.05. 
+
+Predictor variable not shown if all p < 0.05.
+
+"pre_max_val" and "pred_over_3sd" are meant to give an idea of predictor variable outliers driving the association.
+
+"pre_max_val" is the maximum value of the standardized predictor.
+
+"pred_over_3sd" is the number of observations where the value of standardized predictor variable is greater than 3.
+
+"_u4k" and "_u10k" are regressions run with the BC or UVPM outliers filtered out. 
+
+Full regression results and plots at end of document. 
+
+## Montreal Summer Uni Regressions with p < 0.05 {#MSUR}
+MTL_S_BC = Montreal Summer BC Regressions
+
+MTL_S_BC_u4k = Montreal Summer BC Regressions with 4 BC outliers over 4k removed
+
+MTL_S_UVPM = Montreal Summer UVPM Regressions
+
+MTL_S_UVPM_u4k = Montreal Summer UVPM Regressions with 4 UVPM outliers over 4k removed
+
+[Check out M.S. plots](#MSP)
+
+[Check out Interactive Table](#INTT)
+
+```{r}
+sd.scale <- function(x){
+  (x - min(x)) / (max(x) - min(x))
+}
+
+#MTL Summer, all and then the "all NA" filtered out
+
+formattable(arrange(filter(m.s.uni.var.sel[,-1], rowSums(is.na(m.s.uni.var.sel)) != 4), Predictor),
+            list(`pred_max_val` = color_bar("#FA614B", fun = sd.scale),
+            `MTL_S_BC` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+            `MTL_S_BC_u4k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+            `MTL_S_UVPM` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+            `MTL_S_UVPM_u4k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue")))
+            )
+            )
+#MTL Winter, all and then the "all NA" filtered out, note no outliers
+```
+
+####Montreal Summer Uni Regressions where at least 3 had p < 0.05 
+
+```{r}
+formattable(arrange(filter(m.s.uni.var.sel[,-1], rowSums(is.na(m.s.uni.var.sel)) < 2), Predictor),
+            list(`pred_max_val` = color_bar("#FA614B", fun = sd.scale),
+            `MTL_S_BC` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+            `MTL_S_BC_u4k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+            `MTL_S_UVPM` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+            `MTL_S_UVPM_u4k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue")))
+            )
+            )
+
+```
+
+
+## Montreal Winter Uni Regressions with p < 0.05 {#MWUR}
+MTL_S_BC = Montreal Winter BC Regressions
+
+MTL_S_UVPM = Montreal Winter UVPM Regressions
+
+Note: no large BC or UVPM outliers for Montreal Winter Data
+
+[Check out M.W. plots](#MWP)
+```{r}
+
+formattable(arrange(filter(m.w.uni.var.sel[,-1], rowSums(is.na(m.w.uni.var.sel)) != 2), Predictor),
+            list(`pred_max_val` = color_bar("#FA614B", fun = sd.scale),
+                 `MTL_W_BC` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `MTL_W_UVPM` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue")))
+                 )
+                )
+
+```
+
+
+## Montreal Annual Uni Regressions with p < 0.05 {#MAUR}
+MTL_A_BC = Montreal Annual BC Regressions
+
+MTL_A_BC_u4k = Montreal Annual BC Regressions with 3 BC outliers over 4k removed
+
+MTL_A_UVPM = Montreal Annual UVPM Regressions
+
+MTL_A_UVPM_u4k = Montreal Annual UVPM Regressions with 3 UVPM outliers over 4k removed
+
+[Check out M.A. plots](#MAP)
+
+```{r}
+
+#MTL Annual, all and then the "all NA" filtered out
+
+formattable(arrange(filter(m.a.uni.var.sel[,-1], rowSums(is.na(m.a.uni.var.sel)) != 4), Predictor),
+            list(`pred_max_val` = color_bar("#FA614B", fun = sd.scale),
+                 `MTL_A_BC` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `MTL_A_BC_u4k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `MTL_A_UVPM` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `MTL_A_UVPM_u4k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue")))
+                )
+              )
+```
+
+####Montreal Annual Uni Regressions where at least 3 had p < 0.05
+```{r}
+formattable(arrange(filter(m.a.uni.var.sel[,-1], rowSums(is.na(m.a.uni.var.sel)) < 2), Predictor),
+            list(`pred_max_val` = color_bar("#FA614B", fun = sd.scale),
+                 `MTL_A_BC` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `MTL_A_BC_u4k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `MTL_A_UVPM` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `MTL_A_UVPM_u4k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue")))
+                )
+              )
+
+```
+
+## Toronto Uni Regressions with p < 0.05 {#TUR}
+TO_S_BC = Toronto Summer BC Regressions
+
+TO_S_BC_u10k = Toronto Summer BC Regressions with 1 BC outlier over 10k removed
+
+TO_S_UVPM = Toronto Summer UVPM Regressions
+
+TO_S_UVPM_u10k = Toronto Summer UVPM Regressions with 1 UVPM outlier over 10k removed
+
+[Check out T plots](#TP)
+```{r}
+#TO Summer, all and then the "all NA" filtered out
+
+formattable(arrange(filter(to.uni.var.sel[,-1], rowSums(is.na(to.uni.var.sel)) != 4), Predictor),
+            list(`pred_max_val` = color_bar("#FA614B", fun = sd.scale),
+                 `TO_S_BC` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `TO_S_BC_u10k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `TO_S_UVPM` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `TO_S_UVPM_u10k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue")))
+                )
+              )
+
+```
+
+####Toronto Uni Regressions where at least 3 had p < 0.05
+```{r}
+
+formattable(arrange(filter(to.uni.var.sel[,-1], rowSums(is.na(to.uni.var.sel)) < 2), Predictor),
+            list(`pred_max_val` = color_bar("#FA614B", fun = sd.scale),
+                 `TO_S_BC` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `TO_S_BC_u10k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `TO_S_UVPM` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `TO_S_UVPM_u10k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue")))
+                )
+              )
+
+```
+
+
+## Montreal Summer + Toronto Pooled Uni Regressions with p < 0.05 {#PUR}
+M_T_BC = Pooled BC Regressions
+
+M_T_BC_u10k = Pooled BC Regressions with 1 BC outlier over 10k removed
+
+M_T_UVPM = Pooled UVPM Regressions
+
+M_T_UVPM_u10k = Pooled UVPM Regressions with 1 UVPM outlier over 10k removed
+
+[Check out M+T Pooled Plots](#MTPP)
+
+
+```{r}
+#MTL+TO Summer Pooled, all and then the "all NA" filtered out
+
+formattable(arrange(filter(mts.pool.uni.var.sel[,-1], rowSums(is.na(mts.pool.uni.var.sel)) != 4), Predictor),
+            list(`pred_max_val` = color_bar("#FA614B", fun = sd.scale),
+                 `M_T_BC` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `M_T_BC_u10k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `M_T_UVPM` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `M_T_UVPM_u10k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue")))
+                )
+              )
+
+```
+
+### Montreal Summer + Toronto Pooled Uni Regressions where at least 3 had p < 0.05
+```{r}
+
+formattable(arrange(filter(mts.pool.uni.var.sel[,-1], rowSums(is.na(mts.pool.uni.var.sel)) < 2), Predictor),
+            list(`pred_max_val` = color_bar("#FA614B", fun = sd.scale),
+                 `M_T_BC` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `M_T_BC_u10k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `M_T_UVPM` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue"))),
+                 `M_T_UVPM_u10k` = formatter("span", style = x ~ style(color = ifelse(is.na(x), "grey", "darkblue")))
+                )
+              )
+
+```
+
+
+## Total p < 0.05 for each Predictor Variable
+
+[Back to MS Uni Regs](#MSUR)
+
+```{r}
+all.var.freq <- read.csv("all_var_freq.csv")
+formattable(all.var.freq[, -1])
+
+```
+
+
+##Full Results Tables
+
+### All together {#INTT}
+
+[Back to MS Uni Regs](#MSUR)
+
+[Down to Plots](#MSP)
+
+```{r}
+all.uni.reg.r2 <- read.csv("all_uni_reg_r2.csv")
+datatable(all.uni.reg.r2[, -1], filter = "top", options = list(pageLength = 153))
+```
+
+
+####Montreal Summer
+
+```{r}
+formattable(m.s.uni.var.sel)
+```
+
+####Montreal Winter
+
+```{r}
+
+formattable(m.w.uni.var.sel)
+```
+
+####Montreal Annual
+
+```{r}
+formattable(m.a.uni.var.sel)
+```
+
+####Toronto
+
+```{r}
+formattable(to.uni.var.sel)
+```
+
+####Montreal Summer + Toronto Pooled
+
+```{r}
+formattable(mts.pool.uni.var.sel)
+
+```
+
+
+## Montreal Summer Plots {#MSP}
+
+[Back to M.S. Regression Results](#MSUR)
+
+###BC
+![Montreal Summer BC, All data](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/Uni Linearity Plots/MTL.s.bc.v.var.plot.loess.alldata.png)
+
+###BC under 4k
+![Montreal Summer BC, BC data under 4k](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/Uni Linearity Plots/MTL.s.bc.v.var.plot.loess.u4k.png)
+
+###UVPM
+![Montreal Summer UVPM, All data](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/Uni Linearity Plots/MTL.s.uvpm.v.var.plot.loess.alldata.png)
+
+###UVPM under 4k
+![Montreal Summer UVPM, UVPM data under 4k](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/Uni Linearity Plots/MTL.s.uvpm.v.var.plot.loess.u4k.png)
+
+## Montreal Winter Plots {#MWP}
+
+[Back to M.W. Regression Results](#MWUR)
+
+###BC
+![Montreal Winter BC, All data](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/Uni Linearity Plots/MTL.w.bc.v.var.plot.loess.png)
+
+###BC under 4k
+![Montreal Winter BC, BC data under 4k](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/Uni Linearity Plots/MTL.w.bc.v.var.plot.loess.png)
+
+## Montreal Annual Plots {#MAP}
+
+[Back to M.A. Regression Results](#MAUR)
+
+###BC
+![Montreal Annual BC, All data](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/Uni Linearity Plots/MTL.a.bc.v.var.plot.loess.png)
+
+###BC under 4k
+![Montreal Annual BC, BC data under 4k](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/Uni Linearity Plots/MTL.a.bc.v.var.plot.loess.u4k.png)
+
+###UVPM
+![Montreal Annual UVPM, All data](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/Uni Linearity Plots/MTL.a.uvpm.v.var.plot.loess.png)
+
+###UVPM under 4k
+![Montreal Annual UVPM, UVPM data under 4k](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/Uni Linearity Plots/MTL.a.uvpm.v.var.plot.loess.u4k.png)
+
+
+## Toronto Plots {#TP}
+
+[Back to T. Regression Results](#TUR)
+
+[Back to Interactive Table](#INTT)
+
+###BC
+![Toronto BC, All data](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/Uni Linearity Plots/TO.bc.v.var.plot.loess.alldata.png)
+
+###BC under 10k
+![Toronto BC, BC data under 10k](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/Uni Linearity Plots/TO.bc.v.var.plot.loess.u10k.png)
+
+###UVPM
+![Toronto UVPM, All data](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/Uni Linearity Plots/TO.uvpm.v.var.plot.loess.alldata.png)
+
+###UVPM under 10k
+![Toronto UVPM, UVPM data under 10k](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/Uni Linearity Plots/TO.uvpm.v.var.plot.loess.u10k.png)
+
+
+## Montreal Summer and Toronto Pooled Plots {#MTPP}
+
+[Back to Pooled Regression Results](#PUR)
+
+###BC
+![Pooled BC, All data](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/Uni Linearity Plots/mts.pool.bc.v.var.plot.loess.alldata.png)
+
+###BC under 10k
+![Pooled BC, BC data under 10k](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/Uni Linearity Plots/mts.pool.bc.v.var.plot.loess.u10k.png)
+
+###UVPM
+![Montreal Summer UVPM, All data](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/Uni Linearity Plots/mts.pool.uvpm.v.var.plot.loess.alldata.png)
+
+###UVPM under 10k
+![Pooled UVPM, UVPM data under 10k](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/Uni Linearity Plots/mts.pool.uvpm.v.var.plot.loess.u10k.png)
+
+##END

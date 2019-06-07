@@ -6,7 +6,6 @@ library(Hmisc)
 library(dplyr)
 library(table1)
 library(stargazer)
-library(xlsx)
 library(formattable)
 library(purrr)
 library(reshape)
@@ -15,12 +14,17 @@ library(tidyverse)
 library(BMA)
 library(ggpmisc)
 library(miscTools)
-library(ImportExport)
-library(rJava)
-install.packages('rJava',,'http://www.rforge.net/', type = "source")
-install.packages("helloJavaWorld")
-library(helloJavaWorld)
-options("java.home"="/Library/Java/JavaVirtualMachines/jdk1.8.0_45.jdk/Contents/Home/jre")
+
+#xlsx was working but now it doesn't. It says it need rJava to work. I tried to get rJava to work (~5hrs of internet wormhole trial and error). I made some progress (changed the type of errors I got), but it's still not working. 
+#library(xlsx)
+#library(rJava)
+#install.packages('rJava',,'http://www.rforge.net/', type = "source")
+#install.packages("helloJavaWorld")
+#library(helloJavaWorld)
+#options("java.home"="/Library/Java/JavaVirtualMachines/jdk1.8.0_45.jdk/Contents/Home/jre")
+#ImportExport requires xlxs, which requires Java
+#library(ImportExport)
+
 
 
 setwd("/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019")
@@ -2131,6 +2135,11 @@ m.s.bc.xy.fit.plot.alldata <- ggplot(data = long.m.s.data.stan, aes(x = value, y
                   method.args = list(formula = y ~ x),
                   aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
                                       stat(r.squared), stat(p.value))), parse = TRUE)
+#for automatically writing the png file. Not sure how to sort the facets by variable
+#png('MTL.s.bc.v.var.plot.loess.alldata.png', width = 4000, height = 4000)
+#m.s.bc.xy.fit.plot.alldata
+#dev.off()
+
 #repeat for uvpm, saved as MTL.s.uvpm.v.var.plot.loess.alldata.png
 m.s.uvpm.xy.fit.plot.alldata <- ggplot(data = long.m.s.data.stan, aes(x = value, y = uvpm_conc)) +
   ggtitle("Montreal Summer Variables vs UVPM") +
@@ -2141,6 +2150,10 @@ m.s.uvpm.xy.fit.plot.alldata <- ggplot(data = long.m.s.data.stan, aes(x = value,
                   method.args = list(formula = y ~ x),
                   aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
                                       stat(r.squared), stat(p.value))), parse = TRUE)
+
+#png('MTL.s.uvpm.v.var.plot.loess.alldata.png', width = 4000, height = 4000)
+#m.s.bc.xy.fit.plot.alldata
+#dev.off()
 
 #That one 40k point is driving a lot of stuff. Saved as 4k x 4k and then look at the image (file name MTL.s.bc.v.var.plot.loess.u5k.png)
 nrow(subset(long.m.s.data.stan, bc_conc > 5000))
@@ -2257,7 +2270,7 @@ m.s.log.bc.xy.fit.plot <- ggplot(data = long.m.s.data.stan, aes(x = value, y = l
 #number of rws times 16 to make it a 4 x 4 grid of plots. Coulda probably made a loop for this, but I didn't. Need to learn loops. 
 #####MTL S separate sheets
 nnn <- nrow(m.s.data.stan)
-ggplot(data = subset(long.m.s.data.stan[1:(nnn*16), ], bc_conc < 10000), aes(x = value, y = bc_conc)) +
+ggtest <- ggplot(data = subset(long.m.s.data.stan[1:(nnn*16), ], bc_conc < 10000), aes(x = value, y = bc_conc)) +
   geom_point() + 
   facet_wrap(~ variable, scales = "free") +
   stat_smooth(method="loess") + 
@@ -2265,6 +2278,10 @@ ggplot(data = subset(long.m.s.data.stan[1:(nnn*16), ], bc_conc < 10000), aes(x =
                   method.args = list(formula = y ~ x),
                   aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
                                       stat(r.squared), stat(p.value))), parse = TRUE)
+#png('MTL.s.bc.v.var.plot.loess.alldata.png', width = 4000, height = 4000)
+#m.s.bc.xy.fit.plot.alldata
+#dev.off()
+#par()
 
 ggplot(data = subset(long.m.s.data.stan[(nnn*16+1):(nnn*16*2), ], bc_conc < 10000), aes(x = value, y = bc_conc)) +
   geom_point() + 
@@ -2666,39 +2683,28 @@ formattable(filter(mts.pool.uni.var.sel, rowSums(is.na(mts.pool.uni.var.sel)) !=
                 )
               )
 
-#export the tables to the project folder so they can be called up by the RMD file. I'm exporting the raw files as csv, that'll be a bit more code in markdown, but porbablly better for control 
-
-
-
-
-
-
+str(m.s.determinants)
 str(m.s.uni.var.sel)
-str(filter(m.s.uni.var.sel, rowSums(is.na(m.s.uni.var.sel)) != 4))
-
-formattable(m.w.uni.var.sel)
-formattable(m.a.uni.var.sel)
-formattable(to.uni.var.sel)
-formattable(mts.pool.uni.var.sel)
-
-filter(m.s.uni.var.sel, !is.na(m.s.uni.var.sel[ , 1]) && !is.na(m.s.uni.var.sel[ , 2]) && !is.na(m.s.uni.var.sel[ , 3]) && !is.na(m.s.uni.var.sel[ , 4]))
-
-
-filter(m.s.uni.var.sel, sum(m.s.uni.var.sel[ ,1:4]) > 0)
-str(m.s.uni.var.sel)
-filter_at
-
-outliers.3sd(t.s.data.stan$water_750m)
-
-apply(t.s.data.stan[ , 5:ncol(t.s.data.stan)], 2, outliers.3sd)
-
-length(which(abs(t.s.data.stan$water_750m) > 3))
-
+str(to.uni.var.sel)
+str(mts.pool.uni.var.sel)
 m.s.determinants %>% ncol
 t.s.determinants %>% ncol()
+pred.vars <- as_tibble(colnames(m.s.determinants[,-1]))
+colnames(pred.vars) <- "Predictor"
+str(pred.vars)
+pred.vars$Predictor <- as.factor(pred.vars$Predictor)
+all.uni.reg.r2 <- full_join(pred.vars, m.s.uni.var.sel[,c(-1,-7,-8)], by = "Predictor") %>%
+  full_join(m.w.uni.var.sel[ , c(-1, -5,-6)], by = "Predictor") %>%
+  full_join(m.a.uni.var.sel[ ,c(-1, -7,-8)], by = "Predictor") %>%
+  full_join(to.uni.var.sel[, c(-1, -7, -8)], by = "Predictor") %>%
+  full_join(mts.pool.uni.var.sel[, c(-1, -7, -8)], by = "Predictor")
 
-setdiff(colnames(m.s.determinants), colnames(t.s.determinants))
-setdiff(colnames(t.s.determinants), colnames(m.s.determinants))
+
+formattable(all.data.together)
+write.csv(all.uni.reg.r2, "all_uni_reg_r2.csv")
+
+
+
 
 colnames(m.s.determinants[ ,1:5])
 colnames(t.s.determinants[ ,1:5])
@@ -2717,6 +2723,99 @@ to.uvpm.uni.reg
 
 mts.pool.bc.uni.reg %>% nrow
 mts.pool.uvpm.uni.reg
+
+
+# Predictor Counts ######
+
+#export the tables to the project folder so they can be called up by the RMD file. I'm exporting the raw files as csv, that'll be a bit more code in markdown, but porbablly better for control 
+
+write.csv(m.s.uni.var.sel, "m.s.uni.var.sel.csv")
+write.csv(m.w.uni.var.sel, "m.w.uni.var.sel.csv")
+write.csv(m.a.uni.var.sel, "m.a.uni.var.sel.csv")
+write.csv(to.uni.var.sel, "to.uni.var.sel.csv")
+write.csv(mts.pool.uni.var.sel, "mts.pool.uni.var.sel.csv")
+
+#now just try to count how many time p < 0.05 showed up for each variable
+#get a total for number of p < 0.05 per varaible in m.s. Also made a string......didn't need it
+str(m.s.uni.var.sel)
+m.s.var.count <- m.s.uni.var.sel %>%
+  select(2:6) %>%
+  mutate(freq = 4-rowSums(is.na(m.s.uni.var.sel))) %>%
+  select(1,6) %>%
+  mutate(data = rep("m.s", nrow(m.s.uni.var.sel)))
+m.s.var.string <- as.character(rep(m.s.var.count$Predictor, m.s.var.count$freq))
+#get a total for number of p < 0.05 per varaible in m.w
+m.w.var.count <- m.w.uni.var.sel %>%
+  select(2:4) %>%
+  mutate(freq = 2-rowSums(is.na(m.w.uni.var.sel))) %>%
+  select(1,4) %>%
+  mutate(data = rep("m.w", nrow(m.w.uni.var.sel)))
+m.w.var.string <- as.character(rep(m.w.var.count$Predictor, m.w.var.count$freq))
+sum(m.w.var.count$freq)
+length(m.w.var.string)
+#get a total for number of p < 0.05 per varaible in m.a
+m.a.var.count <- m.a.uni.var.sel %>%
+  select(2:6) %>%
+  mutate(freq = 4-rowSums(is.na(m.a.uni.var.sel))) %>%
+  select(1,6) %>%
+  mutate(data = rep("m.a", nrow(m.a.uni.var.sel)))
+m.a.var.string <- as.character(rep(m.a.var.count$Predictor, m.a.var.count$freq))
+#bind them together, group the variable, sum them, then sort to see the most important
+mtl.var.freq <- bind_rows(m.s.var.count, m.w.var.count, m.a.var.count) %>%
+  group_by(Predictor) %>% 
+  summarise(tot = sum(freq)) %>%
+  arrange(desc(tot))
+
+
+str(mts.pool.uni.var.sel)
+mts.pool.uni.var.sel
+#get a total for number of p < 0.05 per varaible in to
+to.var.count <- to.uni.var.sel %>%
+  select(2:6) %>%
+  mutate(freq = 4-rowSums(is.na(to.uni.var.sel))) %>%
+  select(1,6) %>%
+  mutate(data = rep("to", nrow(to.uni.var.sel)))
+to.var.string <- as.character(rep(to.var.count$Predictor, to.var.count$freq))
+sum(to.var.count$freq)
+length(to.var.string)
+#get a total for number of p < 0.05 per varaible in mts pooled
+mts.pool.var.count <- mts.pool.uni.var.sel %>%
+  select(2:6) %>%
+  mutate(freq = 4-rowSums(is.na(mts.pool.uni.var.sel))) %>%
+  select(1,6) %>%
+  mutate(data = rep("mts", nrow(mts.pool.uni.var.sel)))
+mts.pool.var.string <- as.character(rep(mts.pool.var.count$Predictor, mts.pool.var.count$freq))
+
+#bind allllll of them together, group the variable, sum them, then sort to see the most important
+all.var.freq <- bind_rows(m.s.var.count, m.w.var.count, m.a.var.count,to.var.count,mts.pool.var.count) %>%
+  group_by(Predictor) %>% 
+  summarise(tot = sum(freq)) %>%
+  arrange(desc(tot))
+glimpse(all.var.freq)
+formattable(all.var.freq)
+
+#bind allllll of them together, group the variable, sum them, then sort to see the most important
+all.var.freq <- bind_rows(m.s.var.count, m.w.var.count, m.a.var.count,to.var.count,mts.pool.var.count) %>%
+  group_by(Predictor) %>% 
+  summarise(tot = sum(freq)) %>%
+  arrange(desc(tot))
+glimpse(all.var.freq)
+formattable(all.var.freq)
+
+barplot(mtl.var.freq$tot)
+barplot(all.var.freq$tot)
+
+
+all.var.freq$prop <- all.var.freq$tot/18
+mtl.var.freq$prop <- mtl.var.freq$tot/10
+write.csv(all.var.freq, "all_var_freq.csv")
+write.csv(mtl.var.freq, "mtl_var_freq.csv")
+
+
+
+
+
+
 
 #tried to do this as a data frame, but some are of differing lenghts (recall some varaibles were removed for some of the unis)
 uni.vars <- cbind(MTL_S_BC = ifelse(m.s.bc.uni.reg$P.Value < 0.05, as.character(m.s.bc.uni.reg$variable), NA), 

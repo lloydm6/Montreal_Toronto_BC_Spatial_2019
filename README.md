@@ -16,3 +16,5 @@ Added pooled. No pooled plots.
 Added Montreal Winter (reg plus plots). Set up Montreal Annual data, but haven't done plots yet
 
 Trying to make tables, but having trouble with Java R connection
+
+Made an RMD file to summarize the uni reg info

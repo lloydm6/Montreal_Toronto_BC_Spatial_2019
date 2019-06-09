@@ -839,6 +839,32 @@ hist(t.s.data$rail_50m)
 
 
 
+
+str(m.s.data[,1:6])
+str(m.w.data[,1:6])
+str(t.s.data[,1:6])
+all.data <- bind_rows(mutate(m.s.data[,1:3], data.set = rep("ms", nrow(m.s.data))), 
+                      mutate(m.w.data[,1:3], data.set = rep("mw", nrow(m.w.data))), 
+                      mutate(t.s.data[,1:3], data.set = rep("ts", nrow(t.s.data))))
+ggplot(data = all.data, aes(x = bc_conc, color = data.set)) + 
+  geom_histogram(fill="white", alpha=0.5, position="dodge") +
+  labs(title = "Histogram of All Data", x = "BC Concentration")
+
+ggplot(data = subset(all.data, bc_conc < 10000), aes(x = bc_conc, color = data.set)) + 
+  geom_histogram(fill="white", alpha=0.5, position="dodge") +
+  labs(title = "Histogram of BC < 10,000", x = "BC Concentration")
+
+ggplot(data = all.data, aes(x = uvpm_conc, color = data.set)) + 
+  geom_histogram(fill="white", alpha=0.5, position="dodge") +
+  labs(title = "Histogram of All Data", x = "UVPM Concentration")
+
+ggplot(data = subset(all.data, uvpm_conc < 10000), aes(x = bc_conc, color = data.set)) + 
+  geom_histogram(fill="white", alpha=0.5, position="dodge") +
+  labs(title = "Histogram of BC < 10,000", x = "UVPM Concentration")
+
+
+str(all.data)
+
 # Standardizing ####
 ###MTL Summer
 #time to standardize it

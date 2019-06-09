@@ -29,6 +29,13 @@ to.uni.var.sel <- read.csv("MTL TO markdown/to.uni.var.sel.csv")
 mts.pool.uni.var.sel <- read.csv("MTL TO markdown/mts.pool.uni.var.sel.csv")
 ```
 
+# Histograms
+
+![Histogram of All BC Data; ms = Mtl Summer, mw = Mtl Winter, ts = Toronto](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/MTL TO markdown/Hist_All_Data.png)
+
+![Histogram of BC < 10,000; ms = Mtl Summer, mw = Mtl Winter, ts = Toronto](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/MTL TO markdown/Hist_Data_u10k.png)
+
+
 # R^2^ Values of Predictor Variables From Uni Regressions
 The R^2^ value only shows up for predictors with p < 0.05. 
 

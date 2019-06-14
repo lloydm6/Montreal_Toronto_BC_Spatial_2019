@@ -18,3 +18,5 @@ Added Montreal Winter (reg plus plots). Set up Montreal Annual data, but haven't
 Trying to make tables, but having trouble with Java R connection
 
 Made an RMD file to summarize the uni reg info
+
+Made Historgrams of all the residuals. Also made an RMD file to organize my thoughts on them. 

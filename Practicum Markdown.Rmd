@@ -27,6 +27,10 @@ m.w.uni.var.sel <- read.csv("MTL TO markdown/m.w.uni.var.sel.csv")
 m.a.uni.var.sel <- read.csv("MTL TO markdown/m.a.uni.var.sel.csv")
 to.uni.var.sel <- read.csv("MTL TO markdown/to.uni.var.sel.csv")
 mts.pool.uni.var.sel <- read.csv("MTL TO markdown/mts.pool.uni.var.sel.csv")
+
+to.outlier <- read.csv("MTL TO markdown/t.outlier.csv")
+mtl.outlier <- read.csv("MTL TO markdown/m.outlier.csv")
+m.svw.change <- read.csv("MTL TO markdown/m.s.v.w.change.csv")
 ```
 
 # Histograms
@@ -34,6 +38,30 @@ mts.pool.uni.var.sel <- read.csv("MTL TO markdown/mts.pool.uni.var.sel.csv")
 ![Histogram of All BC Data; ms = Mtl Summer, mw = Mtl Winter, ts = Toronto](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/MTL TO markdown/Hist_All_Data.png)
 
 ![Histogram of BC < 10,000; ms = Mtl Summer, mw = Mtl Winter, ts = Toronto](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/MTL TO markdown/Hist_Data_u10k.png)
+
+## Outlier Info
+### Montreal
+```{r}
+
+formattable(mtl.outlier[,-1])
+
+```
+
+###Toronto
+```{r}
+formattable(to.outlier[,c(-1,-2)])
+```
+
+## Montreal Winter vs Summer Differences
+
+```{r}
+formattable(m.svw.change[,-1])
+
+nrow(subset(m.svw.change, abs(`BC...Change`) > 100))
+
+nrow(subset(m.svw.change, abs(`UVPM...Change`) > 100))
+```
+
 
 
 # R^2^ Values of Predictor Variables From Uni Regressions

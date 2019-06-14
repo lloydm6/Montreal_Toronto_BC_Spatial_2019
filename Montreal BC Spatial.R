@@ -78,6 +78,7 @@ setdiff(as.character(subset(m.t.s.outcomes.raw, city == "Toronto")$filter), as.c
 str(m.s.determinants)
 #121 obs of 154 variables
 
+
 str(t.determinants)
 #100 observations of 152 variabales
 
@@ -273,6 +274,7 @@ all.equal(m.a.data[,1], m.a.data[,2])
 m.a.data <- select(m.a.data, -2)
 head(m.a.data)
 
+
 m.a.data <- mutate(m.a.data, a.bc_conc = (w.bc_conc + s.bc_conc)/2, d.bc = round((w.bc_conc - s.bc_conc)/w.bc_conc*100, 0), a.uvpm_conc = (w.uvpm_conc + s.uvpm_conc)/2, d.uvpm = round((w.uvpm_conc - s.uvpm_conc)/w.uvpm_conc*100, 0))
 # I added d. columns that are the % change in concentration between summer and winter. There are some really big values. 
 #can take away those when making the "long" data frame for regressions. 
@@ -284,17 +286,32 @@ all.equal(m.a.s.data[ , 5:ncol(m.a.s.data)], m.a.w.data[ , 10:ncol(m.a.w.data)])
 m.a.data <- data.frame(m.a.data, m.a.s.data[ , 5:ncol(m.a.s.data)])
 str(m.a.data)
 
+m.s.v.w.change <- m.a.data[, 1:10]
+colnames(m.s.v.w.change)[c(8,10)] <- c("BC % Change", "UVPM % Change")
+formattable(m.s.v.w.change)
 
-
+write.csv(m.s.v.w.change, "m.s.v.w.change.csv")
 
 #Outlier Inspection #####
 which.max(t.s.data$bc_conc)
 t.s.data[75, ]
 formattable(t.s.data[75,])
 
+which.max(t.s.outcomes$BC_ng_m3)
+t.outlier <- t.s.outcomes[97,]
+formattable(t.s.outcomes[97,])
+
 formattable(subset(m.s.data, bc_conc > 4000))
 describe(subset(m.s.data, bc_conc > 4000))
 
+formattable(subset(m.s.outcomes, BC_ng_m3 > 4000))
+str(t(subset(m.s.outcomes, BC_ng_m3 > 4000)))
+
+m.s.outlier <- subset(m.s.outcomes[ ,-1], BC_ng_m3 > 4000)
+formattable(m.s.out)
+
+write.csv(t.outlier, "t.outlier.csv")
+write.csv(m.s.outlier, "m.outlier.csv")
 
 # MTL S Histograms ####
 
@@ -316,6 +333,9 @@ hist(m.s.data$bc_conc, breaks = 100, xlim = c(0, 4000))
 #With the bad data taken out, the one out at 30k (MTL_space_23) is not longer there. Looks normallish under 3000. 
 #another little clump of 4 observations out at ~8000, note that TO has many values under 10k. That's not an unreasonable amount of bc
 #bulk of it is under 5k
+
+#look at log histogram
+hist(log(m.s.data$bc_conc), breaks = 100)
 
 hist(m.s.data$uvpm_conc, breaks = 100)
 hist(m.s.data$bc_conc, breaks = 100, xlim = c(0, 4000))
@@ -486,6 +506,9 @@ hist(m.s.data$rail_50m)
 hist(m.w.data$bc_conc, breaks = 100)
 hist(m.w.data$bc_conc, breaks = 100, xlim = c(0, 7000))
 #pretty good looking!
+
+#check log 
+hist(log(m.w.data$bc_conc), breaks = 100)
 
 hist(m.w.data$uvpm_conc, breaks = 100)
 hist(m.w.data$uvpm_conc, breaks = 100, xlim = c(0, 8000))
@@ -670,6 +693,9 @@ hist(m.w.data$rail_50m)
 hist(t.s.data$bc_conc, breaks = 100)
 hist(t.s.data$bc_conc, breaks = 100, xlim = c(0, 7000))
 #One out at 40k (XXX). Looks normallish under 8000, bit of a right tail
+
+#check log
+hist(log(t.s.data$bc_conc), breaks = 100)
 
 hist(t.s.data$uvpm_conc, breaks = 100)
 hist(t.s.data$uvpm_conc, breaks = 100, xlim = c(0, 8000))
@@ -1056,11 +1082,12 @@ m.s.bc.uni.r2 <- long.m.s.data.stan %>%
   mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)),
          results = map(fit, glance)) %>% 
   unnest(results) %>% 
-  select(variable, r.squared)
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.s.data.stan$bc_conc))))
 
 options(scipen=999)
 #put em together 
-m.s.bc.uni.reg <- data.frame(m.s.bc.uni.beta.p[ , c(1,2)], lapply(m.s.bc.uni.cis[ , c(2,3)], as.numeric), round(m.s.bc.uni.r2[ ,2], 5), m.s.bc.uni.beta.p[ , c(3,4)])
+m.s.bc.uni.reg <- data.frame(m.s.bc.uni.beta.p[ , c(1,2)], lapply(m.s.bc.uni.cis[ , c(2,3)], as.numeric), round(m.s.bc.uni.r2[ ,2:3], 5), m.s.bc.uni.beta.p[ , c(3,4)])
 m.s.bc.uni.reg$Beta <- as.numeric(m.s.bc.uni.reg$Beta)
 str(m.s.bc.uni.reg)
 
@@ -1086,9 +1113,14 @@ m.s.uvpm.uni.r2 <- long.m.s.data.stan %>%
   mutate(fit = map(data, ~ lm(uvpm_conc ~ value, data = .)),
          results = map(fit, glance)) %>% 
   unnest(results) %>% 
-  select(variable, r.squared) 
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.s.data.stan$uvpm_conc))))
 
-m.s.uvpm.uni.reg <- data.frame(m.s.uvpm.uni.beta.p[ , c(1,2)], lapply(m.s.uvpm.uni.cis[ , c(2,3)], as.numeric), m.s.uvpm.uni.r2[ ,2], m.s.uvpm.uni.beta.p[ , c(3,4)])
+
+nrow(m.s.data.stan)
+#to see how many observations there are. Cross check this with the dof output. It's goooood. dof = n - k - 1; k is # of parameters, 1 for all of these here unis. 
+
+m.s.uvpm.uni.reg <- data.frame(m.s.uvpm.uni.beta.p[ , c(1,2)], lapply(m.s.uvpm.uni.cis[ , c(2,3)], as.numeric), m.s.uvpm.uni.r2[ ,2:3], m.s.uvpm.uni.beta.p[ , c(3,4)])
 m.s.uvpm.uni.reg$Beta <- as.numeric(m.s.uvpm.uni.reg$Beta)
 
 #write them. Now I can use these excels as a quick load for the data if I want
@@ -1177,15 +1209,17 @@ m.s.u4k.bc.uni.r2 <- subset(long.m.s.data.stan, bc_conc < m.s.outlier.level) %>%
   mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)),
          results = map(fit, glance)) %>% 
   unnest(results) %>% 
-  select(variable, r.squared)
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.s.data.stan$bc_conc))))
+
 
 #put em together 
-m.s.u4k.bc.uni.reg <- data.frame(m.s.u4k.bc.uni.beta.p[ , c(1,2)], lapply(m.s.u4k.bc.uni.cis[ , c(2,3)], as.numeric), round(m.s.u4k.bc.uni.r2[ ,2], 5), m.s.u4k.bc.uni.beta.p[ , c(3,4)])
+m.s.u4k.bc.uni.reg <- data.frame(m.s.u4k.bc.uni.beta.p[ , c(1,2)], lapply(m.s.u4k.bc.uni.cis[ , c(2,3)], as.numeric), round(m.s.u4k.bc.uni.r2[ ,2:3], 5), m.s.u4k.bc.uni.beta.p[ , c(3,4)])
 m.s.u4k.bc.uni.reg$Beta <- as.numeric(m.s.u4k.bc.uni.reg$Beta)
 
-nrow(subset(m.s.u4k.bc.uni.reg, P.Value <= 0.05))
-nrow(subset(m.s.bc.uni.reg, P.Value <= 0.05))
-#8 with all data and 42 with the 4 over 5k outliers cut out
+nrow(subset(m.s.u4k.bc.uni.reg, P.Value < 0.05))
+nrow(subset(m.s.bc.uni.reg, P.Value < 0.05))
+#8 with all data and 41 with the 4 over 5k outliers cut out
 
 formattable(m.s.u4k.bc.uni.reg)
 formattable(subset(m.s.u4k.bc.uni.reg, P.Value <= 0.05))
@@ -1214,10 +1248,11 @@ m.s.u4k.uvpm.uni.r2 <- subset(long.m.s.data.stan, uvpm_conc < m.s.outlier.level)
   mutate(fit = map(data, ~ lm(uvpm_conc ~ value, data = .)),
          results = map(fit, glance)) %>% 
   unnest(results) %>% 
-  select(variable, r.squared)
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.s.data.stan$uvpm_conc))))
 
 #put em together 
-m.s.u4k.uvpm.uni.reg <- data.frame(m.s.u4k.uvpm.uni.beta.p[ , c(1,2)], lapply(m.s.u4k.uvpm.uni.cis[ , c(2,3)], as.numeric), round(m.s.u4k.uvpm.uni.r2[ ,2], 5), m.s.u4k.uvpm.uni.beta.p[ , c(3,4)])
+m.s.u4k.uvpm.uni.reg <- data.frame(m.s.u4k.uvpm.uni.beta.p[ , c(1,2)], lapply(m.s.u4k.uvpm.uni.cis[ , c(2,3)], as.numeric), round(m.s.u4k.uvpm.uni.r2[ ,2:3], 5), m.s.u4k.uvpm.uni.beta.p[ , c(3,4)])
 m.s.u4k.uvpm.uni.reg$Beta <- as.numeric(m.s.u4k.uvpm.uni.reg$Beta)
 
 nrow(subset(m.s.u4k.uvpm.uni.reg, P.Value <= 0.05))
@@ -1279,11 +1314,12 @@ m.w.bc.uni.r2 <- long.m.w.data.stan %>%
   mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)),
          results = map(fit, glance)) %>% 
   unnest(results) %>% 
-  select(variable, r.squared)
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.w.data.stan$bc_conc))))
 
 
 #put em together 
-m.w.bc.uni.reg <- data.frame(m.w.bc.uni.beta.p[ , c(1,2)], lapply(m.w.bc.uni.cis[ , c(2,3)], as.numeric), round(m.w.bc.uni.r2[ ,2], 5), m.w.bc.uni.beta.p[ , c(3,4)])
+m.w.bc.uni.reg <- data.frame(m.w.bc.uni.beta.p[ , c(1,2)], lapply(m.w.bc.uni.cis[ , c(2,3)], as.numeric), round(m.w.bc.uni.r2[ ,2:3], 5), m.w.bc.uni.beta.p[ , c(3,4)])
 m.w.bc.uni.reg$Beta <- as.numeric(m.w.bc.uni.reg$Beta)
 str(m.w.bc.uni.reg)
 
@@ -1310,9 +1346,10 @@ m.w.uvpm.uni.r2 <- long.m.w.data.stan %>%
   mutate(fit = map(data, ~ lm(uvpm_conc ~ value, data = .)),
          results = map(fit, glance)) %>% 
   unnest(results) %>% 
-  select(variable, r.squared) 
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.w.data.stan$uvpm_conc))))
 
-m.w.uvpm.uni.reg <- data.frame(m.w.uvpm.uni.beta.p[ , c(1,2)], lapply(m.w.uvpm.uni.cis[ , c(2,3)], as.numeric), m.w.uvpm.uni.r2[ ,2], m.w.uvpm.uni.beta.p[ , c(3,4)])
+m.w.uvpm.uni.reg <- data.frame(m.w.uvpm.uni.beta.p[ , c(1,2)], lapply(m.w.uvpm.uni.cis[ , c(2,3)], as.numeric), m.w.uvpm.uni.r2[ ,2:3], m.w.uvpm.uni.beta.p[ , c(3,4)])
 m.w.uvpm.uni.reg$Beta <- as.numeric(m.w.uvpm.uni.reg$Beta)
 
 write.csv(m.w.bc.uni.reg, file = "MTL_W_BC_Uni_Regressions.csv")
@@ -1404,7 +1441,9 @@ m.a.bc.uni.r2 <- long.m.a.data.stan %>%
   mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)),
          results = map(fit, glance)) %>% 
   unnest(results) %>% 
-  select(variable, r.squared)
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.a.data.stan$bc_conc))))
+
 str(m.a.bc.uni.r2)
 
 #com_50 is NA, it gets included in the CIs and R2, but not in the beta.p for some reason. Need to cut it out. 
@@ -1423,7 +1462,7 @@ filter(m.a.bc.uni.r2, variable == "com_50m")
 m.a.bc.uni.beta.p <- add_row(m.a.bc.uni.beta.p, variable = setdiff(m.a.bc.uni.cis$variable, m.a.bc.uni.beta.p$variable), Beta = NA, SE = NA, `P Value` = NA, .after = which(is.na(m.a.bc.uni.cis$`2.5%`)))
 
 #put em together 
-m.a.bc.uni.reg <- data.frame(m.a.bc.uni.beta.p[ , c(1,2)], lapply(m.a.bc.uni.cis[ , c(2,3)], as.numeric), round(m.a.bc.uni.r2[ ,2], 5), m.a.bc.uni.beta.p[ , c(3,4)])
+m.a.bc.uni.reg <- data.frame(m.a.bc.uni.beta.p[ , c(1,2)], lapply(m.a.bc.uni.cis[ , c(2,3)], as.numeric), round(m.a.bc.uni.r2[ ,2:3], 5), m.a.bc.uni.beta.p[ , c(3,4)])
 m.a.bc.uni.reg$Beta <- as.numeric(m.a.bc.uni.reg$Beta)
 str(m.a.bc.uni.reg)
 
@@ -1451,7 +1490,8 @@ m.a.uvpm.uni.r2 <- long.m.a.data.stan %>%
   mutate(fit = map(data, ~ lm(uvpm_conc ~ value, data = .)),
          results = map(fit, glance)) %>% 
   unnest(results) %>% 
-  select(variable, r.squared) 
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.a.data.stan$uvpm_conc))))
 
 
 #com_50 is NA, it gets included in the CIs and R2, but not in the beta.p for some reason. Need to cut it out. 
@@ -1468,7 +1508,7 @@ filter(m.a.uvpm.uni.r2, variable == "com_50m")
 #for bringing it all ogether later, it's better to insert a row
 m.a.uvpm.uni.beta.p <- add_row(m.a.uvpm.uni.beta.p, variable = setdiff(m.a.uvpm.uni.cis$variable, m.a.uvpm.uni.beta.p$variable), Beta = NA, SE = NA, `P Value` = NA, .after = which(is.na(m.a.uvpm.uni.cis$`2.5%`)))
 
-m.a.uvpm.uni.reg <- data.frame(m.a.uvpm.uni.beta.p[ , c(1,2)], lapply(m.a.uvpm.uni.cis[ , c(2,3)], as.numeric), m.a.uvpm.uni.r2[ ,2], m.a.uvpm.uni.beta.p[ , c(3,4)])
+m.a.uvpm.uni.reg <- data.frame(m.a.uvpm.uni.beta.p[ , c(1,2)], lapply(m.a.uvpm.uni.cis[ , c(2,3)], as.numeric), m.a.uvpm.uni.r2[ ,2:3], m.a.uvpm.uni.beta.p[ , c(3,4)])
 m.a.uvpm.uni.reg$Beta <- as.numeric(m.a.uvpm.uni.reg$Beta)
 
 write.csv(m.a.bc.uni.reg, file = "MTL_A_BC_Uni_Regressions.csv")
@@ -1536,7 +1576,8 @@ m.a.u4k.bc.uni.r2 <- subset(long.m.a.data.stan, bc_conc < m.a.outlier.level) %>%
   mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)),
          results = map(fit, glance)) %>% 
   unnest(results) %>% 
-  select(variable, r.squared)
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.a.data.stan$bc_conc))))
 
 #com_50 is NA, it gets included in the CIs and R2, but not in the beta.p for some reason. Need to cut it out. 
 setdiff(m.a.u4k.bc.uni.beta.p$variable, m.a.u4k.bc.uni.cis$variable)
@@ -1553,9 +1594,9 @@ filter(m.a.u4k.bc.uni.r2, variable == "com_50m")
 m.a.u4k.bc.uni.beta.p <- add_row(m.a.u4k.bc.uni.beta.p, variable = setdiff(m.a.u4k.bc.uni.cis$variable, m.a.u4k.bc.uni.beta.p$variable), Beta = NA, SE = NA, `P Value` = NA, .after = which(is.na(m.a.u4k.bc.uni.cis$`2.5%`)))
 
 #put em together 
-m.a.u4k.bc.uni.reg <- data.frame(m.a.u4k.bc.uni.beta.p[ , c(1,2)], lapply(m.a.u4k.bc.uni.cis[ , c(2,3)], as.numeric), round(m.a.u4k.bc.uni.r2[ ,2], 5), m.a.u4k.bc.uni.beta.p[ , c(3,4)])
+m.a.u4k.bc.uni.reg <- data.frame(m.a.u4k.bc.uni.beta.p[ , c(1,2)], lapply(m.a.u4k.bc.uni.cis[ , c(2,3)], as.numeric), round(m.a.u4k.bc.uni.r2[ ,2:3], 5), m.a.u4k.bc.uni.beta.p[ , c(3,4)])
 m.a.u4k.bc.uni.reg$Beta <- as.numeric(m.a.u4k.bc.uni.reg$Beta)
-m.a.u4k.bc.uni.reg$P.Value <- as.numeric(m.a.u4k.bc.uni.reg$P.Value)
+
 
 str(m.a.u4k.bc.uni.reg)
 
@@ -1592,7 +1633,8 @@ m.a.u4k.uvpm.uni.r2 <- subset(long.m.a.data.stan, uvpm_conc < m.a.outlier.level)
   mutate(fit = map(data, ~ lm(uvpm_conc ~ value, data = .)),
          results = map(fit, glance)) %>% 
   unnest(results) %>% 
-  select(variable, r.squared)
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.a.data.stan$uvpm_conc))))
 
 #com_50 is NA, it gets included in the CIs and R2, but not in the beta.p for some reason. Need to cut it out. 
 setdiff(m.a.u4k.uvpm.uni.beta.p$variable, m.a.u4k.uvpm.uni.cis$variable)
@@ -1610,7 +1652,7 @@ m.a.u4k.uvpm.uni.beta.p <- add_row(m.a.u4k.uvpm.uni.beta.p, variable = setdiff(m
 
 
 #put em together 
-m.a.u4k.uvpm.uni.reg <- data.frame(m.a.u4k.uvpm.uni.beta.p[ , c(1,2)], lapply(m.a.u4k.uvpm.uni.cis[ , c(2,3)], as.numeric), round(m.a.u4k.uvpm.uni.r2[ ,2], 5), m.a.u4k.uvpm.uni.beta.p[ , c(3,4)])
+m.a.u4k.uvpm.uni.reg <- data.frame(m.a.u4k.uvpm.uni.beta.p[ , c(1,2)], lapply(m.a.u4k.uvpm.uni.cis[ , c(2,3)], as.numeric), round(m.a.u4k.uvpm.uni.r2[ ,2:3], 5), m.a.u4k.uvpm.uni.beta.p[ , c(3,4)])
 m.a.u4k.uvpm.uni.reg$Beta <- as.numeric(m.a.u4k.uvpm.uni.reg$Beta)
 
 nrow(subset(m.a.u4k.uvpm.uni.reg, P.Value <= 0.05))
@@ -1637,13 +1679,13 @@ write.csv(m.a.u4k.uvpm.uni.reg, file = "MTL_A_u4k_UVPM_Uni_Regressions.csv")
 
 
 
-#MTL Uni log Regression ########
+#MTL Summer Uni log Regression ########
 #####MTL UNI Regressions Log on outcome
 #Don't focus on this too much right now
 
 #there are some 0 values for bc that go to -Inf when logged. 
-log(long.mts.data.pool.stan$bc_conc)
-describe(long.mts.data.pool.stan$bc_conc)
+log(long.mts.pool.data.stan$bc_conc)
+describe(long.mts.pool.data.stan$bc_conc)
 log(long.m.s.data.stan$bc_conc)
 describe(long.m.s.data.stan$bc_conc)
 #can do a log(bc_conc + 1) transformation
@@ -1671,11 +1713,12 @@ m.s.log.bc.uni.r2 <- long.m.s.data.stan %>%
   mutate(fit = map(data, ~ lm(log(bc_conc + 1) ~ value, data = .)),
          results = map(fit, glance)) %>% 
   unnest(results) %>% 
-  select(variable, r.squared)
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.s.data.stan$bc_conc))))
 
 
 #put em together 
-m.s.log.bc.uni.reg <- data.frame(m.s.log.bc.uni.beta.p[ , c(1,2)], lapply(m.s.log.bc.uni.cis[ , c(2,3)], as.numeric), round(m.s.log.bc.uni.r2[ ,2], 5), m.s.log.bc.uni.beta.p[ , c(3,4)])
+m.s.log.bc.uni.reg <- data.frame(m.s.log.bc.uni.beta.p[ , c(1,2)], lapply(m.s.log.bc.uni.cis[ , c(2,3)], as.numeric), round(m.s.log.bc.uni.r2[ ,2:3], 5), m.s.log.bc.uni.beta.p[ , c(3,4)])
 m.s.log.bc.uni.reg$Beta <- as.numeric(m.s.log.bc.uni.reg$Beta)
 str(m.s.log.bc.uni.reg)
 
@@ -1701,9 +1744,10 @@ m.s.log.uvpm.uni.r2 <- long.m.s.data.stan %>%
   mutate(fit = map(data, ~ lm(log(uvpm_conc + 1) ~ value, data = .)),
          results = map(fit, glance)) %>% 
   unnest(results) %>% 
-  select(variable, r.squared) 
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.s.data.stan$uvpm_conc))))
 
-m.s.log.uvpm.uni.reg <- data.frame(m.s.log.uvpm.uni.beta.p[ , c(1,2)], lapply(m.s.log.uvpm.uni.cis[ , c(2,3)], as.numeric), m.s.log.uvpm.uni.r2[ ,2], m.s.log.uvpm.uni.beta.p[ , c(3,4)])
+m.s.log.uvpm.uni.reg <- data.frame(m.s.log.uvpm.uni.beta.p[ , c(1,2)], lapply(m.s.log.uvpm.uni.cis[ , c(2,3)], as.numeric), m.s.log.uvpm.uni.r2[ ,2:3], m.s.log.uvpm.uni.beta.p[ , c(3,4)])
 m.s.log.uvpm.uni.reg$Beta <- as.numeric(m.s.log.uvpm.uni.reg$Beta)
 
 write.csv(m.s.log.bc.uni.reg, file = "MTL_S_log_BC_Uni_Regressions.csv")
@@ -1716,13 +1760,13 @@ nrow(subset(m.s.log.bc.uni.reg, P.Value <= 0.05))
 nrow(subset(m.s.bc.uni.reg, P.Value <= 0.05))
 #9 with the log transform, 8 without it
 
-#MTL Uni log Reg -Outliers #####
-
+#MTL Summer Uni log Reg - BC = 0 #####
+#probably not necessary. The log takes care of the outliers. 
 #do log unis without all 4 outliers
 #do simple regressions on bc_conc for each of the determinants
 
-m.s.outlier.level <- 5000
-m.s.log.u5k.bc.uni.beta.p <- subset(long.m.s.data.stan, bc_conc < m.s.outlier.level) %>%
+
+m.s.log.o0.bc.uni.beta.p <- subset(long.m.s.data.stan, bc_conc > 0) %>%
   group_by(variable) %>%
   do(tidy(lm(log(bc_conc + 1) ~ value, .))) %>%
   filter(term == "value") %>%
@@ -1730,7 +1774,7 @@ m.s.log.u5k.bc.uni.beta.p <- subset(long.m.s.data.stan, bc_conc < m.s.outlier.le
   select(Beta, SE, "P Value") %>% 
   as.data.frame()
 #to get CIs
-m.s.log.u5k.bc.uni.cis <- subset(long.m.s.data.stan, bc_conc < m.s.outlier.level) %>%
+m.s.log.o0.bc.uni.cis <- subset(long.m.s.data.stan, bc_conc > 0) %>%
   group_by(variable) %>%
   do(tidy(confint(lm(log(bc_conc + 1) ~ value, .)))) %>%
   filter(.rownames == "value") %>%
@@ -1738,23 +1782,175 @@ m.s.log.u5k.bc.uni.cis <- subset(long.m.s.data.stan, bc_conc < m.s.outlier.level
   select("2.5%", "97.5%") %>% 
   as.data.frame()
 #get the R2
-m.s.log.u5k.bc.uni.r2 <- subset(long.m.s.data.stan, bc_conc < m.s.outlier.level) %>% 
+m.s.log.o0.bc.uni.r2 <- subset(long.m.s.data.stan, bc_conc > 0) %>% 
   nest(-variable) %>% 
   mutate(fit = map(data, ~ lm(log(bc_conc + 1) ~ value, data = .)),
          results = map(fit, glance)) %>% 
   unnest(results) %>% 
-  select(variable, r.squared)
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.s.data.stan$bc_conc))))
+
+setdiff(m.s.log.o0.bc.uni.r2$variable, m.s.log.o0.bc.uni.beta.p$variable)
+#rail_50m is missing
+m.s.log.o0.bc.uni.beta.p <- add_row(m.s.log.o0.bc.uni.beta.p, variable = setdiff(m.s.log.o0.bc.uni.r2$variable, m.s.log.o0.bc.uni.beta.p$variable), Beta = NA, SE = NA, `P Value` = NA, .after = which(is.na(m.s.log.o0.bc.uni.cis$`2.5%`)))
 
 #put em together 
-m.s.log.u5k.bc.uni.reg <- data.frame(m.s.log.u5k.bc.uni.beta.p[ , c(1,2)], lapply(m.s.log.u5k.bc.uni.cis[ , c(2,3)], as.numeric), round(m.s.log.u5k.bc.uni.r2[ ,2], 5), m.s.log.u5k.bc.uni.beta.p[ , c(3,4)])
-m.s.log.u5k.bc.uni.reg$Beta <- as.numeric(m.s.log.u5k.bc.uni.reg$Beta)
+m.s.log.o0.bc.uni.reg <- data.frame(m.s.log.o0.bc.uni.beta.p[ , c(1,2)], lapply(m.s.log.o0.bc.uni.cis[ , c(2,3)], as.numeric), round(m.s.log.o0.bc.uni.r2[ ,2:3], 5), m.s.log.o0.bc.uni.beta.p[ , c(3,4)])
+m.s.log.o0.bc.uni.reg$Beta <- as.numeric(m.s.log.o0.bc.uni.reg$Beta)
 
-nrow(subset(m.s.log.u5k.bc.uni.reg, P.Value <= 0.05))
+nrow(subset(m.s.log.o0.bc.uni.reg, P.Value <= 0.05))
 nrow(subset(m.s.log.bc.uni.reg, P.Value <= 0.05))
-#9 with all data and 5 with the 4 over 5k outliers cut out
+#9 with all data and 17 with the BC = 0 taken out
 
 formattable(subset(m.s.log.u5k.bc.uni.reg, P.Value <= 0.05))
-#could do this all again for uvpm, but I'll wait until I hear back from Susannah re outliers
+
+setdiff(filter(m.s.log.o0.bc.uni.reg, P.Value < 0.05)$variable, filter(m.s.u4k.bc.uni.reg, P.Value < 0.05)$variable)
+setdiff(filter(m.s.u4k.bc.uni.reg, P.Value < 0.05)$variable, filter(m.s.log.o0.bc.uni.reg, P.Value < 0.05)$variable)
+
+
+
+# MTL Annual Uni log Reg ####
+
+
+
+
+
+
+
+
+
+
+
+#do simple regressions on log(bc_conc + 1) for each of the determinants
+m.a.log.bc.uni.beta.p <- long.m.a.data.stan %>%
+  group_by(variable) %>%
+  do(tidy(lm(log(bc_conc + 1) ~ value, .))) %>%
+  filter(term == "value") %>%
+  mutate(Beta = as.character(round(estimate, 2)), "P Value" = round(p.value, 3), SE = round(std.error, 1)) %>% 
+  select(Beta, SE, "P Value") %>% 
+  as.data.frame()
+#to get CIs
+m.a.log.bc.uni.cis <- long.m.a.data.stan %>%
+  group_by(variable) %>%
+  do(tidy(confint(lm(log(bc_conc + 1) ~ value, .)))) %>%
+  filter(.rownames == "value") %>%
+  mutate("2.5%" = as.character(round(X2.5.., 2)), "97.5%" = as.character(round(X97.5.., 2))) %>% 
+  select("2.5%", "97.5%") %>% 
+  as.data.frame()
+#get the R2
+m.a.log.bc.uni.r2 <- long.m.a.data.stan %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(log(bc_conc + 1) ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.s.data.stan$bc_conc))))
+
+#different lengths. 
+setdiff(m.a.log.bc.uni.cis$variable, m.a.log.bc.uni.beta.p$variable)
+#gosh darn com_50m again.....I mean, obviously. Shoulda seen that coming
+#insert a row
+m.a.log.bc.uni.beta.p <- add_row(m.a.log.bc.uni.beta.p, variable = setdiff(m.a.log.bc.uni.cis$variable, m.a.log.bc.uni.beta.p$variable), Beta = NA, SE = NA, `P Value` = NA, .after = which(is.na(m.a.log.bc.uni.cis$`2.5%`)))
+
+
+#put em together 
+m.a.log.bc.uni.reg <- data.frame(m.a.log.bc.uni.beta.p[ , c(1,2)], lapply(m.a.log.bc.uni.cis[ , c(2,3)], as.numeric), round(m.a.log.bc.uni.r2[ ,2:3], 5), m.a.log.bc.uni.beta.p[ , c(3,4)])
+m.a.log.bc.uni.reg$Beta <- as.numeric(m.a.log.bc.uni.reg$Beta)
+str(m.a.log.bc.uni.reg)
+
+#do simple regressions on uvpm_conc for each of the determinants
+m.a.log.uvpm.uni.beta.p <- long.m.a.data.stan %>%
+  group_by(variable) %>%
+  do(tidy(lm(log(uvpm_conc + 1) ~ value, .))) %>%
+  filter(term == "value") %>%
+  mutate(Beta = as.character(round(estimate, 2)), "P Value" = round(p.value, 3), SE = round(std.error, 1)) %>% 
+  select(Beta, SE, "P Value") %>% 
+  as.data.frame()
+#uvpm CIs
+m.a.log.uvpm.uni.cis <- long.m.a.data.stan %>%
+  group_by(variable) %>%
+  do(tidy(confint(lm(log(uvpm_conc + 1) ~ value, .)))) %>%
+  filter(.rownames == "value") %>%
+  mutate("2.5%" = as.character(round(X2.5.., 2)), "97.5%" = as.character(round(X97.5.., 2))) %>% 
+  select("2.5%", "97.5%") %>% 
+  as.data.frame()
+#uvpm R2
+m.a.log.uvpm.uni.r2 <- long.m.a.data.stan %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(log(uvpm_conc + 1) ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.s.data.stan$uvpm_conc))))
+
+#different lengths. 
+setdiff(m.a.log.uvpm.uni.cis$variable, m.a.log.uvpm.uni.beta.p$variable)
+#gosh darn com_50m again.....I mean, obviously. Shoulda seen that coming
+#insert a row
+m.a.log.uvpm.uni.beta.p <- add_row(m.a.log.uvpm.uni.beta.p, variable = setdiff(m.a.log.uvpm.uni.cis$variable, m.a.log.uvpm.uni.beta.p$variable), Beta = NA, SE = NA, `P Value` = NA, .after = which(is.na(m.a.log.uvpm.uni.cis$`2.5%`)))
+
+
+
+m.a.log.uvpm.uni.reg <- data.frame(m.a.log.uvpm.uni.beta.p[ , c(1,2)], lapply(m.a.log.uvpm.uni.cis[ , c(2,3)], as.numeric), m.a.log.uvpm.uni.r2[ ,2:3], m.a.log.uvpm.uni.beta.p[ , c(3,4)])
+m.a.log.uvpm.uni.reg$Beta <- as.numeric(m.a.log.uvpm.uni.reg$Beta)
+
+write.csv(m.a.log.bc.uni.reg, file = "MTL_A_log_BC_Uni_Regressions.csv")
+write.csv(m.a.log.uvpm.uni.reg, file = "MTL_A_log_UVPM_Uni_Regressions.csv")
+
+formattable(m.a.log.bc.uni.reg)
+formattable(m.a.log.uvpm.uni.reg)
+
+nrow(subset(m.a.log.bc.uni.reg, P.Value <= 0.05))
+nrow(subset(m.a.bc.uni.reg, P.Value <= 0.05))
+#11 with the log transform, 6 without it
+
+
+
+#try with the BC > 4000 outliers removed
+nrow(filter(m.a.data.stan, bc_conc > 4000))
+#do simple regressions on log(bc_conc + 1) for each of the determinants
+m.a.log.u4k.bc.uni.beta.p <- filter(long.m.a.data.stan, bc_conc < 4000) %>%
+  group_by(variable) %>%
+  do(tidy(lm(log(bc_conc + 1) ~ value, .))) %>%
+  filter(term == "value") %>%
+  mutate(Beta = as.character(round(estimate, 2)), "P Value" = round(p.value, 3), SE = round(std.error, 1)) %>% 
+  select(Beta, SE, "P Value") %>% 
+  as.data.frame()
+#to get CIs
+m.a.log.u4k.bc.uni.cis <- filter(long.m.a.data.stan, bc_conc < 4000) %>%
+  group_by(variable) %>%
+  do(tidy(confint(lm(log(bc_conc + 1) ~ value, .)))) %>%
+  filter(.rownames == "value") %>%
+  mutate("2.5%" = as.character(round(X2.5.., 2)), "97.5%" = as.character(round(X97.5.., 2))) %>% 
+  select("2.5%", "97.5%") %>% 
+  as.data.frame()
+#get the R2
+m.a.log.u4k.bc.uni.r2 <- filter(long.m.a.data.stan, bc_conc < 4000) %>%
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(log(bc_conc + 1) ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.s.data.stan$bc_conc))))
+
+#different lengths. 
+setdiff(m.a.log.u4k.bc.uni.cis$variable, m.a.log.u4k.bc.uni.beta.p$variable)
+#gosh darn com_50m again.....I mean, obviously. Shoulda seen that coming
+#insert a row
+m.a.log.u4k.bc.uni.beta.p <- add_row(m.a.log.u4k.bc.uni.beta.p, variable = setdiff(m.a.log.u4k.bc.uni.cis$variable, m.a.log.u4k.bc.uni.beta.p$variable), Beta = NA, SE = NA, `P Value` = NA, .after = which(is.na(m.a.log.u4k.bc.uni.cis$`2.5%`)))
+
+
+#put em together 
+m.a.log.u4k.bc.uni.reg <- data.frame(m.a.log.u4k.bc.uni.beta.p[ , c(1,2)], lapply(m.a.log.u4k.bc.uni.cis[ , c(2,3)], as.numeric), round(m.a.log.u4k.bc.uni.r2[ ,2:3], 5), m.a.log.u4k.bc.uni.beta.p[ , c(3,4)])
+m.a.log.u4k.bc.uni.reg$Beta <- as.numeric(m.a.log.u4k.bc.uni.reg$Beta)
+str(m.a.log.u4k.bc.uni.reg)
+
+nrow(subset(m.a.log.bc.uni.reg, P.Value <= 0.05))
+nrow(subset(m.a.log.u4k.bc.uni.reg, P.Value <= 0.05))
+#11 with the log transform, 22 with log transform and BC > 4,000 removed
+
+
+
 
 
 
@@ -1803,11 +1999,12 @@ to.bc.uni.r2 <- long.t.s.data.stan %>%
   mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)),
          results = map(fit, glance)) %>% 
   unnest(results) %>% 
-  select(variable, r.squared)
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(t.s.data.stan$bc_conc))))
 
 
 #put em together 
-to.bc.uni.reg <- data.frame(to.bc.uni.beta.p[ , c(1,2)], lapply(to.bc.uni.cis[ , c(2,3)], as.numeric), round(to.bc.uni.r2[ ,2], 5), to.bc.uni.beta.p[ , c(3,4)])
+to.bc.uni.reg <- data.frame(to.bc.uni.beta.p[ , c(1,2)], lapply(to.bc.uni.cis[ , c(2,3)], as.numeric), round(to.bc.uni.r2[ ,2:3], 5), to.bc.uni.beta.p[ , c(3,4)])
 to.bc.uni.reg$Beta <- as.numeric(to.bc.uni.reg$Beta)
 str(to.bc.uni.reg)
 
@@ -1835,9 +2032,10 @@ to.uvpm.uni.r2 <- long.t.s.data.stan %>%
   mutate(fit = map(data, ~ lm(uvpm_conc ~ value, data = .)),
          results = map(fit, glance)) %>% 
   unnest(results) %>% 
-  select(variable, r.squared) 
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(t.s.data.stan$uvpm_conc))))
 
-to.uvpm.uni.reg <- data.frame(to.uvpm.uni.beta.p[ , c(1,2)], lapply(to.uvpm.uni.cis[ , c(2,3)], as.numeric), to.uvpm.uni.r2[ ,2], to.uvpm.uni.beta.p[ , c(3,4)])
+to.uvpm.uni.reg <- data.frame(to.uvpm.uni.beta.p[ , c(1,2)], lapply(to.uvpm.uni.cis[ , c(2,3)], as.numeric), to.uvpm.uni.r2[ ,2:3], to.uvpm.uni.beta.p[ , c(3,4)])
 to.uvpm.uni.reg$Beta <- as.numeric(to.uvpm.uni.reg$Beta)
 
 write.csv(to.bc.uni.reg, file = "TO_BC_Uni_Regressions.csv")
@@ -1896,11 +2094,12 @@ to.u10k.bc.uni.r2 <- subset(long.t.s.data.stan, bc_conc < t.outlier.level)  %>%
   mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)),
          results = map(fit, glance)) %>% 
   unnest(results) %>% 
-  select(variable, r.squared)
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(t.s.data.stan$bc_conc))))
 
 
 #put em together 
-to.u10k.bc.uni.reg <- data.frame(to.u10k.bc.uni.beta.p[ , c(1,2)], lapply(to.u10k.bc.uni.cis[ , c(2,3)], as.numeric), round(to.u10k.bc.uni.r2[ ,2], 5), to.u10k.bc.uni.beta.p[ , c(3,4)])
+to.u10k.bc.uni.reg <- data.frame(to.u10k.bc.uni.beta.p[ , c(1,2)], lapply(to.u10k.bc.uni.cis[ , c(2,3)], as.numeric), round(to.u10k.bc.uni.r2[ ,2:3], 5), to.u10k.bc.uni.beta.p[ , c(3,4)])
 to.u10k.bc.uni.reg$Beta <- as.numeric(to.u10k.bc.uni.reg$Beta)
 str(to.u10k.bc.uni.reg)
 
@@ -1932,11 +2131,12 @@ to.u10k.uvpm.uni.r2 <- subset(long.t.s.data.stan, uvpm_conc < t.outlier.level)  
   mutate(fit = map(data, ~ lm(uvpm_conc ~ value, data = .)),
          results = map(fit, glance)) %>% 
   unnest(results) %>% 
-  select(variable, r.squared)
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(t.s.data.stan$uvpm_conc))))
 
 
 #put em together 
-to.u10k.uvpm.uni.reg <- data.frame(to.u10k.uvpm.uni.beta.p[ , c(1,2)], lapply(to.u10k.uvpm.uni.cis[ , c(2,3)], as.numeric), round(to.u10k.uvpm.uni.r2[ ,2], 5), to.u10k.uvpm.uni.beta.p[ , c(3,4)])
+to.u10k.uvpm.uni.reg <- data.frame(to.u10k.uvpm.uni.beta.p[ , c(1,2)], lapply(to.u10k.uvpm.uni.cis[ , c(2,3)], as.numeric), round(to.u10k.uvpm.uni.r2[ ,2:3], 5), to.u10k.uvpm.uni.beta.p[ , c(3,4)])
 to.u10k.uvpm.uni.reg$Beta <- as.numeric(to.u10k.uvpm.uni.reg$Beta)
 str(to.u10k.uvpm.uni.reg)
 
@@ -1950,11 +2150,126 @@ write.csv(to.u10k.uvpm.uni.reg, file = "TO_u10k_UVPM_Uni_Regressions.csv")
 
 
 
+# TO Uni log Regressions ######
 
 
 
 
 
+
+
+
+#do simple regressions on log(bc_conc + 1) for each of the determinants
+to.log.bc.uni.beta.p <- long.t.s.data.stan %>%
+  group_by(variable) %>%
+  do(tidy(lm(log(bc_conc + 1) ~ value, .))) %>%
+  filter(term == "value") %>%
+  mutate(Beta = as.character(round(estimate, 2)), "P Value" = round(p.value, 3), SE = round(std.error, 1)) %>% 
+  select(Beta, SE, "P Value") %>% 
+  as.data.frame()
+#to get CIs
+to.log.bc.uni.cis <- long.t.s.data.stan %>%
+  group_by(variable) %>%
+  do(tidy(confint(lm(log(bc_conc + 1) ~ value, .)))) %>%
+  filter(.rownames == "value") %>%
+  mutate("2.5%" = as.character(round(X2.5.., 2)), "97.5%" = as.character(round(X97.5.., 2))) %>% 
+  select("2.5%", "97.5%") %>% 
+  as.data.frame()
+#get the R2
+to.log.bc.uni.r2 <- long.t.s.data.stan %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(log(bc_conc + 1) ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.s.data.stan$bc_conc))))
+
+
+#put em together 
+to.log.bc.uni.reg <- data.frame(to.log.bc.uni.beta.p[ , c(1,2)], lapply(to.log.bc.uni.cis[ , c(2,3)], as.numeric), round(to.log.bc.uni.r2[ ,2:3], 5), to.log.bc.uni.beta.p[ , c(3,4)])
+to.log.bc.uni.reg$Beta <- as.numeric(to.log.bc.uni.reg$Beta)
+str(to.log.bc.uni.reg)
+
+#do simple regressions on uvpm_conc for each of the determinants
+to.log.uvpm.uni.beta.p <- long.t.s.data.stan %>%
+  group_by(variable) %>%
+  do(tidy(lm(log(uvpm_conc + 1) ~ value, .))) %>%
+  filter(term == "value") %>%
+  mutate(Beta = as.character(round(estimate, 2)), "P Value" = round(p.value, 3), SE = round(std.error, 1)) %>% 
+  select(Beta, SE, "P Value") %>% 
+  as.data.frame()
+#uvpm CIs
+to.log.uvpm.uni.cis <- long.t.s.data.stan %>%
+  group_by(variable) %>%
+  do(tidy(confint(lm(log(uvpm_conc + 1) ~ value, .)))) %>%
+  filter(.rownames == "value") %>%
+  mutate("2.5%" = as.character(round(X2.5.., 2)), "97.5%" = as.character(round(X97.5.., 2))) %>% 
+  select("2.5%", "97.5%") %>% 
+  as.data.frame()
+#uvpm R2
+to.log.uvpm.uni.r2 <- long.t.s.data.stan %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(log(uvpm_conc + 1) ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.s.data.stan$uvpm_conc))))
+
+
+to.log.uvpm.uni.reg <- data.frame(to.log.uvpm.uni.beta.p[ , c(1,2)], lapply(to.log.uvpm.uni.cis[ , c(2,3)], as.numeric), to.log.uvpm.uni.r2[ ,2:3], to.log.uvpm.uni.beta.p[ , c(3,4)])
+to.log.uvpm.uni.reg$Beta <- as.numeric(to.log.uvpm.uni.reg$Beta)
+
+write.csv(to.log.bc.uni.reg, file = "TO_log_BC_Uni_Regressions.csv")
+write.csv(to.log.uvpm.uni.reg, file = "TO_log_UVPM_Uni_Regressions.csv")
+
+nrow(subset(to.log.bc.uni.reg, P.Value <= 0.05))
+nrow(subset(to.bc.uni.reg, P.Value <= 0.05))
+#38 with the log transform, 63 without it
+
+
+
+#log transform with the 2 small outliers removed
+min(filter(long.t.s.data.stan, bc_conc > 0)$bc_conc)
+#do simple regressions on log(bc_conc + 1) for each of the determinants
+to.log.o100.bc.uni.beta.p <- filter(long.t.s.data.stan, bc_conc > 0) %>%
+  group_by(variable) %>%
+  do(tidy(lm(log(bc_conc + 1) ~ value, .))) %>%
+  filter(term == "value") %>%
+  mutate(Beta = as.character(round(estimate, 2)), "P Value" = round(p.value, 3), SE = round(std.error, 1)) %>% 
+  select(Beta, SE, "P Value") %>% 
+  as.data.frame()
+#to get CIs
+to.log.o100.bc.uni.cis <- filter(long.t.s.data.stan, bc_conc > 0) %>%
+  group_by(variable) %>%
+  do(tidy(confint(lm(log(bc_conc + 1) ~ value, .)))) %>%
+  filter(.rownames == "value") %>%
+  mutate("2.5%" = as.character(round(X2.5.., 2)), "97.5%" = as.character(round(X97.5.., 2))) %>% 
+  select("2.5%", "97.5%") %>% 
+  as.data.frame()
+#get the R2
+to.log.o100.bc.uni.r2 <- filter(long.t.s.data.stan, bc_conc > 0) %>%
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(log(bc_conc + 1) ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.s.data.stan$bc_conc))))
+
+
+#put em together 
+to.log.o100.bc.uni.reg <- data.frame(to.log.o100.bc.uni.beta.p[ , c(1,2)], lapply(to.log.o100.bc.uni.cis[ , c(2,3)], as.numeric), round(to.log.o100.bc.uni.r2[ ,2:3], 5), to.log.o100.bc.uni.beta.p[ , c(3,4)])
+to.log.o100.bc.uni.reg$Beta <- as.numeric(to.log.o100.bc.uni.reg$Beta)
+str(to.log.o100.bc.uni.reg)
+
+
+
+nrow(filter(to.u10k.bc.uni.reg, P.Value < 0.05))
+nrow(filter(to.log.bc.uni.reg, P.Value < 0.05))
+nrow(filter(to.log.o100.bc.uni.reg, P.Value < 0.05))
+#73 for linear u10k, 38 for log-linear, 76 for log-linear o100
+
+setdiff(filter(to.log.o100.bc.uni.reg, P.Value < 0.05)$variable, filter(to.u10k.bc.uni.reg, P.Value < 0.05)$variable)
+setdiff(filter(to.u10k.bc.uni.reg, P.Value < 0.05)$variable, filter(to.log.o100.bc.uni.reg, P.Value < 0.05)$variable)
 
 
 
@@ -1966,18 +2281,19 @@ write.csv(to.u10k.uvpm.uni.reg, file = "TO_u10k_UVPM_Uni_Regressions.csv")
 
 
 #now run all the uni regressions. Not sure if the pooled will be an MTL annual average pooled with TO or MTL summer pooled with TO. THis is MTL summer with TO
+long.mts.pool.data.stan
 str(mts.data.pool.stan)
-long.mts.data.pool.stan <- melt(mts.data.pool.stan, id.vars = c("f.id", "bc_conc", "uvpm_conc", "good_data", "city"))
-str(long.mts.data.pool.stan)
+long.mts.pool.data.stan <- melt(mts.data.pool.stan, id.vars = c("f.id", "bc_conc", "uvpm_conc", "good_data", "city"))
+str(long.mts.pool.data.stan)
 
 #check to make sure nothing is too squirrelly
-summary(long.mts.data.pool.stan)
-nrow(long.mts.data.pool.stan)/nrow(mts.data.pool.stan)
+summary(long.mts.pool.data.stan)
+nrow(long.mts.pool.data.stan)/nrow(mts.data.pool.stan)
 
 ###Univariate regressions. Found various code that will run all the univariate at once, but each one gives diferent outputs. I'm just going to frankenstein them together instead of finding an elegant solution
 
 #do simple regressions on bc_conc for each of the determinants
-mts.pool.bc.uni.beta.p <- long.mts.data.pool.stan %>%
+mts.pool.bc.uni.beta.p <- long.mts.pool.data.stan %>%
   group_by(variable) %>%
   do(tidy(lm(bc_conc ~ value, .))) %>%
   filter(term == "value") %>%
@@ -1985,7 +2301,7 @@ mts.pool.bc.uni.beta.p <- long.mts.data.pool.stan %>%
   select(Beta, SE, "P Value") %>% 
   as.data.frame()
 #to get CIs
-mts.pool.bc.uni.cis <- long.mts.data.pool.stan %>%
+mts.pool.bc.uni.cis <- long.mts.pool.data.stan %>%
   group_by(variable) %>%
   do(tidy(confint(lm(bc_conc ~ value, .)))) %>%
   filter(.rownames == "value") %>%
@@ -1993,22 +2309,24 @@ mts.pool.bc.uni.cis <- long.mts.data.pool.stan %>%
   select("2.5%", "97.5%") %>% 
   as.data.frame()
 #get the R2
-mts.pool.bc.uni.r2 <- long.mts.data.pool.stan %>% 
+mts.pool.bc.uni.r2 <- long.mts.pool.data.stan %>% 
   nest(-variable) %>% 
   mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)),
          results = map(fit, glance)) %>% 
   unnest(results) %>% 
-  select(variable, r.squared)
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(mts.data.pool.stan$bc_conc))))
 
 #put em together 
-mts.pool.bc.uni.reg <- data.frame(mts.pool.bc.uni.beta.p[ , c(1,2)], lapply(mts.pool.bc.uni.cis[ , c(2,3)], as.numeric), round(mts.pool.bc.uni.r2[ ,2], 5), mts.pool.bc.uni.beta.p[ , c(3,4)])
+mts.pool.bc.uni.reg <- data.frame(mts.pool.bc.uni.beta.p[ , c(1,2)], lapply(mts.pool.bc.uni.cis[ , c(2,3)], as.numeric), round(mts.pool.bc.uni.r2[ ,2:3], 5), mts.pool.bc.uni.beta.p[ , c(3,4)])
 mts.pool.bc.uni.reg$Beta <- as.numeric(mts.pool.bc.uni.reg$Beta)
 str(mts.pool.bc.uni.reg)
 formattable(mts.pool.bc.uni.reg)
 
+
 #repat for uvpm
 #do simple regressions on uvpm_conc for each of the determinants
-mts.pool.uvpm.uni.beta.p <- long.mts.data.pool.stan %>%
+mts.pool.uvpm.uni.beta.p <- long.mts.pool.data.stan %>%
   group_by(variable) %>%
   do(tidy(lm(uvpm_conc ~ value, .))) %>%
   filter(term == "value") %>%
@@ -2016,7 +2334,7 @@ mts.pool.uvpm.uni.beta.p <- long.mts.data.pool.stan %>%
   select(Beta, SE, "P Value") %>% 
   as.data.frame()
 #to get CIs
-mts.pool.uvpm.uni.cis <- long.mts.data.pool.stan %>%
+mts.pool.uvpm.uni.cis <- long.mts.pool.data.stan %>%
   group_by(variable) %>%
   do(tidy(confint(lm(uvpm_conc ~ value, .)))) %>%
   filter(.rownames == "value") %>%
@@ -2024,15 +2342,16 @@ mts.pool.uvpm.uni.cis <- long.mts.data.pool.stan %>%
   select("2.5%", "97.5%") %>% 
   as.data.frame()
 #get the R2
-mts.pool.uvpm.uni.r2 <- long.mts.data.pool.stan %>% 
+mts.pool.uvpm.uni.r2 <- long.mts.pool.data.stan %>% 
   nest(-variable) %>% 
   mutate(fit = map(data, ~ lm(uvpm_conc ~ value, data = .)),
          results = map(fit, glance)) %>% 
   unnest(results) %>% 
-  select(variable, r.squared)
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(mts.data.pool.stan$uvpm_conc))))
 
 #put em together 
-mts.pool.uvpm.uni.reg <- data.frame(mts.pool.uvpm.uni.beta.p[ , c(1,2)], lapply(mts.pool.uvpm.uni.cis[ , c(2,3)], as.numeric), round(mts.pool.uvpm.uni.r2[ ,2], 5), mts.pool.uvpm.uni.beta.p[ , c(3,4)])
+mts.pool.uvpm.uni.reg <- data.frame(mts.pool.uvpm.uni.beta.p[ , c(1,2)], lapply(mts.pool.uvpm.uni.cis[ , c(2,3)], as.numeric), round(mts.pool.uvpm.uni.r2[ ,2:3], 5), mts.pool.uvpm.uni.beta.p[ , c(3,4)])
 mts.pool.uvpm.uni.reg$Beta <- as.numeric(mts.pool.uvpm.uni.reg$Beta)
 str(mts.pool.uvpm.uni.reg)
 formattable(mts.pool.uvpm.uni.reg)
@@ -2061,7 +2380,7 @@ write.csv(mts.data.pool.stan, file = "mtl_to_pooled_summer_standardized_data.csv
 #do unis without the 1 extreme outlier. The 4 MTL outliers are within the range of tonronto
 #do simple regressions on bc_conc for each of the determinants
 mts.pool.outlier.level <- 10000
-u10k.mts.pool.bc.uni.beta.p <- subset(long.mts.data.pool.stan, bc_conc < mts.pool.outlier.level) %>%
+mts.pool.u10k.bc.uni.beta.p <- subset(long.mts.pool.data.stan, bc_conc < mts.pool.outlier.level) %>%
   group_by(variable) %>%
   do(tidy(lm(bc_conc ~ value, .))) %>%
   filter(term == "value") %>%
@@ -2069,7 +2388,7 @@ u10k.mts.pool.bc.uni.beta.p <- subset(long.mts.data.pool.stan, bc_conc < mts.poo
   select(Beta, SE, "P Value") %>% 
   as.data.frame()
 #to get CIs
-u10k.mts.pool.bc.uni.cis <- subset(long.mts.data.pool.stan, bc_conc < mts.pool.outlier.level) %>%
+mts.pool.u10k.bc.uni.cis <- subset(long.mts.pool.data.stan, bc_conc < mts.pool.outlier.level) %>%
   group_by(variable) %>%
   do(tidy(confint(lm(bc_conc ~ value, .)))) %>%
   filter(.rownames == "value") %>%
@@ -2077,30 +2396,31 @@ u10k.mts.pool.bc.uni.cis <- subset(long.mts.data.pool.stan, bc_conc < mts.pool.o
   select("2.5%", "97.5%") %>% 
   as.data.frame()
 #get the R2
-u10k.mts.pool.bc.uni.r2 <- subset(long.mts.data.pool.stan, bc_conc < mts.pool.outlier.level) %>% 
+mts.pool.u10k.bc.uni.r2 <- subset(long.mts.pool.data.stan, bc_conc < mts.pool.outlier.level) %>% 
   nest(-variable) %>% 
   mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)),
          results = map(fit, glance)) %>% 
   unnest(results) %>% 
-  select(variable, r.squared)
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(mts.data.pool.stan$bc_conc))))
 
 #put em together 
-u10k.mts.pool.bc.uni.reg <- data.frame(u10k.mts.pool.bc.uni.beta.p[ , c(1,2)], lapply(u10k.mts.pool.bc.uni.cis[ , c(2,3)], as.numeric), round(u10k.mts.pool.bc.uni.r2[ ,2], 5), u10k.mts.pool.bc.uni.beta.p[ , c(3,4)])
-u10k.mts.pool.bc.uni.reg$Beta <- as.numeric(u10k.mts.pool.bc.uni.reg$Beta)
-str(u10k.mts.pool.bc.uni.reg)
-formattable(u10k.mts.pool.bc.uni.reg)
+mts.pool.u10k.bc.uni.reg <- data.frame(mts.pool.u10k.bc.uni.beta.p[ , c(1,2)], lapply(mts.pool.u10k.bc.uni.cis[ , c(2,3)], as.numeric), round(mts.pool.u10k.bc.uni.r2[ ,2:3], 5), mts.pool.u10k.bc.uni.beta.p[ , c(3,4)])
+mts.pool.u10k.bc.uni.reg$Beta <- as.numeric(mts.pool.u10k.bc.uni.reg$Beta)
+str(mts.pool.u10k.bc.uni.reg)
+formattable(mts.pool.u10k.bc.uni.reg)
 
 nrow(subset(mts.pool.bc.uni.reg, P.Value <= 0.05))
-nrow(subset(u10k.mts.pool.bc.uni.reg, P.Value <= 0.05))
+nrow(subset(mts.pool.u10k.bc.uni.reg, P.Value <= 0.05))
 #there are 52 with the outlier and 42 without the outlier
 
 formattable(subset(mts.pool.bc.uni.reg, P.Value <= 0.05))
-formattable(subset(u10k.mts.pool.bc.uni.reg, P.Value <= 0.05))
+formattable(subset(mts.pool.u10k.bc.uni.reg, P.Value <= 0.05))
 
 
 
 #repeat for uvpm
-u10k.mts.pool.uvpm.uni.beta.p <- subset(long.mts.data.pool.stan, uvpm_conc < mts.pool.outlier.level) %>%
+mts.pool.u10k.uvpm.uni.beta.p <- subset(long.mts.pool.data.stan, uvpm_conc < mts.pool.outlier.level) %>%
   group_by(variable) %>%
   do(tidy(lm(uvpm_conc ~ value, .))) %>%
   filter(term == "value") %>%
@@ -2108,7 +2428,7 @@ u10k.mts.pool.uvpm.uni.beta.p <- subset(long.mts.data.pool.stan, uvpm_conc < mts
   select(Beta, SE, "P Value") %>% 
   as.data.frame()
 #to get CIs
-u10k.mts.pool.uvpm.uni.cis <- subset(long.mts.data.pool.stan, uvpm_conc < mts.pool.outlier.level) %>%
+mts.pool.u10k.uvpm.uni.cis <- subset(long.mts.pool.data.stan, uvpm_conc < mts.pool.outlier.level) %>%
   group_by(variable) %>%
   do(tidy(confint(lm(uvpm_conc ~ value, .)))) %>%
   filter(.rownames == "value") %>%
@@ -2116,29 +2436,158 @@ u10k.mts.pool.uvpm.uni.cis <- subset(long.mts.data.pool.stan, uvpm_conc < mts.po
   select("2.5%", "97.5%") %>% 
   as.data.frame()
 #get the R2
-u10k.mts.pool.uvpm.uni.r2 <- subset(long.mts.data.pool.stan, uvpm_conc < mts.pool.outlier.level) %>% 
+mts.pool.u10k.uvpm.uni.r2 <- subset(long.mts.pool.data.stan, uvpm_conc < mts.pool.outlier.level) %>% 
   nest(-variable) %>% 
   mutate(fit = map(data, ~ lm(uvpm_conc ~ value, data = .)),
          results = map(fit, glance)) %>% 
   unnest(results) %>% 
-  select(variable, r.squared)
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(mts.data.pool.stan$uvpm_conc))))
 
 #put em together 
-u10k.mts.pool.uvpm.uni.reg <- data.frame(u10k.mts.pool.uvpm.uni.beta.p[ , c(1,2)], lapply(u10k.mts.pool.uvpm.uni.cis[ , c(2,3)], as.numeric), round(u10k.mts.pool.uvpm.uni.r2[ ,2], 5), u10k.mts.pool.uvpm.uni.beta.p[ , c(3,4)])
-u10k.mts.pool.uvpm.uni.reg$Beta <- as.numeric(u10k.mts.pool.uvpm.uni.reg$Beta)
-str(u10k.mts.pool.uvpm.uni.reg)
-formattable(u10k.mts.pool.uvpm.uni.reg)
+mts.pool.u10k.uvpm.uni.reg <- data.frame(mts.pool.u10k.uvpm.uni.beta.p[ , c(1,2)], lapply(mts.pool.u10k.uvpm.uni.cis[ , c(2,3)], as.numeric), round(u10k.mts.pool.uvpm.uni.r2[ ,2:3], 5), mts.pool.u10k.uvpm.uni.beta.p[ , c(3,4)])
+mts.pool.u10k.uvpm.uni.reg$Beta <- as.numeric(mts.pool.u10k.uvpm.uni.reg$Beta)
+str(mts.pool.u10k.uvpm.uni.reg)
+formattable(mts.pool.u10k.uvpm.uni.reg)
 
 nrow(subset(mts.pool.uvpm.uni.reg, P.Value <= 0.05))
-nrow(subset(u10k.mts.pool.uvpm.uni.reg, P.Value <= 0.05))
+nrow(subset(mts.pool.u10k.uvpm.uni.reg, P.Value <= 0.05))
 #there are 51 with the outlier and 31 without the outlier
 
 formattable(subset(mts.pool.uvpm.uni.reg, P.Value <= 0.05))
-formattable(subset(u10k.mts.pool.uvpm.uni.reg, P.Value <= 0.05))
+formattable(subset(mts.pool.u10k.uvpm.uni.reg, P.Value <= 0.05))
 
 
-write.csv(u10k.mts.pool.bc.uni.reg, file = "M_T_Pool_u10k_BC_Uni_Regressions.csv")
-write.csv(u10k.mts.pool.uvpm.uni.reg, file = "M_T_Pool_u10k_UVPM_Uni_Regressions.csv")
+write.csv(mts.pool.u10k.bc.uni.reg, file = "M_T_Pool_u10k_BC_Uni_Regressions.csv")
+write.csv(mts.pool.u10k.uvpm.uni.reg, file = "M_T_Pool_u10k_UVPM_Uni_Regressions.csv")
+
+
+
+
+
+# MTL + TO Summer Pool Uni log Regressions #######
+
+
+
+
+
+
+
+
+
+
+
+
+#do simple regressions on log(bc_conc + 1) for each of the determinants
+mts.pool.log.bc.uni.beta.p <- long.mts.pool.data.stan %>%
+  group_by(variable) %>%
+  do(tidy(lm(log(bc_conc + 1) ~ value, .))) %>%
+  filter(term == "value") %>%
+  mutate(Beta = as.character(round(estimate, 2)), "P Value" = round(p.value, 3), SE = round(std.error, 1)) %>% 
+  select(Beta, SE, "P Value") %>% 
+  as.data.frame()
+#to get CIs
+mts.pool.log.bc.uni.cis <- long.mts.pool.data.stan %>%
+  group_by(variable) %>%
+  do(tidy(confint(lm(log(bc_conc + 1) ~ value, .)))) %>%
+  filter(.rownames == "value") %>%
+  mutate("2.5%" = as.character(round(X2.5.., 2)), "97.5%" = as.character(round(X97.5.., 2))) %>% 
+  select("2.5%", "97.5%") %>% 
+  as.data.frame()
+#get the R2
+mts.pool.log.bc.uni.r2 <- long.mts.pool.data.stan %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(log(bc_conc + 1) ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.s.data.stan$bc_conc))))
+
+
+#put em together 
+mts.pool.log.bc.uni.reg <- data.frame(mts.pool.log.bc.uni.beta.p[ , c(1,2)], lapply(mts.pool.log.bc.uni.cis[ , c(2,3)], as.numeric), round(mts.pool.log.bc.uni.r2[ ,2:3], 5), mts.pool.log.bc.uni.beta.p[ , c(3,4)])
+mts.pool.log.bc.uni.reg$Beta <- as.numeric(mts.pool.log.bc.uni.reg$Beta)
+str(mts.pool.log.bc.uni.reg)
+
+#do simple regressions on uvpm_conc for each of the determinants
+mts.pool.log.uvpm.uni.beta.p <- long.mts.pool.data.stan %>%
+  group_by(variable) %>%
+  do(tidy(lm(log(uvpm_conc + 1) ~ value, .))) %>%
+  filter(term == "value") %>%
+  mutate(Beta = as.character(round(estimate, 2)), "P Value" = round(p.value, 3), SE = round(std.error, 1)) %>% 
+  select(Beta, SE, "P Value") %>% 
+  as.data.frame()
+#uvpm CIs
+mts.pool.log.uvpm.uni.cis <- long.mts.pool.data.stan %>%
+  group_by(variable) %>%
+  do(tidy(confint(lm(log(uvpm_conc + 1) ~ value, .)))) %>%
+  filter(.rownames == "value") %>%
+  mutate("2.5%" = as.character(round(X2.5.., 2)), "97.5%" = as.character(round(X97.5.., 2))) %>% 
+  select("2.5%", "97.5%") %>% 
+  as.data.frame()
+#uvpm R2
+mts.pool.log.uvpm.uni.r2 <- long.mts.pool.data.stan %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(log(uvpm_conc + 1) ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.s.data.stan$uvpm_conc))))
+
+
+mts.pool.log.uvpm.uni.reg <- data.frame(mts.pool.log.uvpm.uni.beta.p[ , c(1,2)], lapply(mts.pool.log.uvpm.uni.cis[ , c(2,3)], as.numeric), mts.pool.log.uvpm.uni.r2[ ,2:3], mts.pool.log.uvpm.uni.beta.p[ , c(3,4)])
+mts.pool.log.uvpm.uni.reg$Beta <- as.numeric(mts.pool.log.uvpm.uni.reg$Beta)
+
+write.csv(mts.pool.log.bc.uni.reg, file = "M_T_Pool_log_BC_Uni_Regressions.csv")
+write.csv(mts.pool.log.uvpm.uni.reg, file = "M_T_Pool_log_UVPM_Uni_Regressions.csv")
+
+nrow(subset(mts.pool.log.bc.uni.reg, P.Value <= 0.05))
+nrow(subset(mts.pool.bc.uni.reg, P.Value <= 0.05))
+#23 with the log transform, 52 without it
+
+
+
+
+
+
+
+
+########remove the BC = 0 
+#do simple regressions on log(bc_conc + 1) for each of the determinants
+mts.pool.log.o0.bc.uni.beta.p <- filter(long.mts.pool.data.stan, bc_conc > 0) %>%
+  group_by(variable) %>%
+  do(tidy(lm(log(bc_conc + 1) ~ value, .))) %>%
+  filter(term == "value") %>%
+  mutate(Beta = as.character(round(estimate, 2)), "P Value" = round(p.value, 3), SE = round(std.error, 1)) %>% 
+  select(Beta, SE, "P Value") %>% 
+  as.data.frame()
+#to get CIs
+mts.pool.log.o0.bc.uni.cis <- filter(long.mts.pool.data.stan, bc_conc > 0) %>%
+  group_by(variable) %>%
+  do(tidy(confint(lm(log(bc_conc + 1) ~ value, .)))) %>%
+  filter(.rownames == "value") %>%
+  mutate("2.5%" = as.character(round(X2.5.., 2)), "97.5%" = as.character(round(X97.5.., 2))) %>% 
+  select("2.5%", "97.5%") %>% 
+  as.data.frame()
+#get the R2
+mts.pool.log.o0.bc.uni.r2 <- filter(long.mts.pool.data.stan, bc_conc > 0) %>%
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(log(bc_conc + 1) ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.s.data.stan$bc_conc))))
+
+
+#put em together 
+mts.pool.log.o0.bc.uni.reg <- data.frame(mts.pool.log.o0.bc.uni.beta.p[ , c(1,2)], lapply(mts.pool.log.o0.bc.uni.cis[ , c(2,3)], as.numeric), round(mts.pool.log.bc.uni.r2[ ,2:3], 5), mts.pool.log.o0.bc.uni.beta.p[ , c(3,4)])
+mts.pool.log.o0.bc.uni.reg$Beta <- as.numeric(mts.pool.log.o0.bc.uni.reg$Beta)
+str(mts.pool.log.o0.bc.uni.reg)
+
+
+
+
+
 
 
 
@@ -2184,7 +2633,7 @@ m.s.uvpm.xy.fit.plot.alldata <- ggplot(data = long.m.s.data.stan, aes(x = value,
 #That one 40k point is driving a lot of stuff. Saved as 4k x 4k and then look at the image (file name MTL.s.bc.v.var.plot.loess.u5k.png)
 nrow(subset(long.m.s.data.stan, bc_conc > 5000))
 m.s.bc.xy.fit.plot.u4k <- ggplot(data = subset(long.m.s.data.stan, bc_conc < 4000), aes(x = value, y = bc_conc)) +
-  ggtitle("Montreal Summer Variables vs BC (4 outliers over 5,000 removed)") +
+  ggtitle("Montreal Summer Variables vs BC (4 outliers over 4,000 removed)") +
   geom_point() + 
   facet_wrap(~ variable, scales = "free") +
   stat_smooth(method="loess") + 
@@ -2194,7 +2643,7 @@ m.s.bc.xy.fit.plot.u4k <- ggplot(data = subset(long.m.s.data.stan, bc_conc < 400
                                       stat(r.squared), stat(p.value))), parse = TRUE)
 #repeat for uvpm, saved as MTL.s.uvpm.v.var.plot.loess.u5k.png
 m.s.uvpm.xy.fit.plot.u4k <- ggplot(data = subset(long.m.s.data.stan, uvpm_conc < 4000), aes(x = value, y = uvpm_conc)) +
-  ggtitle("Montreal Summer Variables vs UVPM (4 outliers over 5,000 removed)") +
+  ggtitle("Montreal Summer Variables vs UVPM (4 outliers over 4,000 removed)") +
   geom_point() + 
   facet_wrap(~ variable, scales = "free") +
   stat_smooth(method="loess") + 
@@ -2205,6 +2654,52 @@ m.s.uvpm.xy.fit.plot.u4k <- ggplot(data = subset(long.m.s.data.stan, uvpm_conc <
 
 #They all look pretty linear. Some have sparse data and outliers. 
 #mjrd_200m is really weird. All the other mjrds have a slope, but that one is flat. 
+
+#For initial variable selection, pull out all the p > 0.05, remove the 4 outlierts over 4k, and for now, just look at bc
+nrow(subset(long.m.s.data.stan, bc_conc > 5000))
+nrow(filter(long.m.s.data.stan, bc_conc > 5000))
+#confiming I know how the %in% argument works
+nrow(filter(long.m.s.data.stan, variable %in% m.s.bc.uni.reg$variable))
+nrow(filter(long.m.s.data.stan, variable %in% filter(m.s.u4k.bc.uni.reg, P.Value < 0.05)$variable))/104
+nrow(filter(long.m.s.data.stan, variable %in% "rail_50m"))
+
+nrow(subset(long.m.s.data.stan, bc_conc > 5000))
+nrow(subset(m.s.data.stan, bc_conc > 5000))
+612/4
+
+long.m.s.data.stan %>%
+  filter(!is.na(bc_conc)) %>%
+  filter(bc_conc < 4000) %>%
+  nrow()
+#testing the code before running it. 
+long.m.s.data.stan %>%
+  filter(!is.na(bc_conc) & bc_conc < 4000 & variable %in% filter(m.s.u4k.bc.uni.reg, P.Value < 0.05)$variable) %>%
+  describe()
+describe(filter(long.m.s.data.stan, !is.na(bc_conc) & bc_conc < 4000 & variable %in% filter(m.s.u4k.bc.uni.reg, P.Value < 0.05)$variable))
+
+##########MTL Summer plots unis with p < 0.05
+m.s.bc.xy.fit.plot.u4k.pu5 <- ggplot(data = filter(long.m.s.data.stan, !is.na(bc_conc) & bc_conc < 4000 & variable %in% filter(m.s.u4k.bc.uni.reg, P.Value < 0.05)$variable), aes(x = value, y = bc_conc)) +
+  ggtitle("Montreal Summer p < 0.05 Variables vs BC (4 outliers over 4,000 removed)") +
+  geom_point() + 
+  facet_wrap(~ variable, scales = "free") +
+  stat_smooth(method="loess") + 
+  stat_fit_glance(method = "lm",
+                  method.args = list(formula = y ~ x),
+                  aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
+                                      stat(r.squared), stat(p.value))), parse = TRUE)
+#saved as pu5_m_s_u4k_bc
+
+#p > 0.05
+m.s.bc.xy.fit.plot.u4k.po5 <- ggplot(data = filter(long.m.s.data.stan, !is.na(bc_conc) & bc_conc < 4000 & variable %in% filter(m.s.u4k.bc.uni.reg, P.Value >= 0.05)$variable), aes(x = value, y = bc_conc)) +
+  ggtitle("Montreal Summer p > 0.05 Variables vs BC (4 outliers over 4,000 removed)") +
+  geom_point() + 
+  facet_wrap(~ variable, scales = "free") +
+  stat_smooth(method="loess") + 
+  stat_fit_glance(method = "lm",
+                  method.args = list(formula = y ~ x),
+                  aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
+                                      stat(r.squared), stat(p.value))), parse = TRUE)
+#saved as po5_m_s_u4k_bc
 
 ######MTL Winter
 
@@ -2229,6 +2724,17 @@ m.w.uvpm.xy.fit.plot.alldata <- ggplot(data = long.m.w.data.stan, aes(x = value,
                   aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
                                       stat(r.squared), stat(p.value))), parse = TRUE)
 #no outliers, no seperate plot with outliers removed. 
+
+#just the p < 0.05 plots
+m.w.bc.xy.fit.plot.pu5 <- ggplot(data = filter(long.m.w.data.stan, !is.na(bc_conc) & variable %in% filter(m.w.bc.uni.reg, P.Value < 0.05)$variable), aes(x = value, y = bc_conc)) +
+  ggtitle("Montreal Winter p < 0.05 Variables vs BC") +
+  geom_point() + 
+  facet_wrap(~ variable, scales = "free") +
+  stat_smooth(method="loess") + 
+  stat_fit_glance(method = "lm",
+                  method.args = list(formula = y ~ x),
+                  aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
+                                      stat(r.squared), stat(p.value))), parse = TRUE)
 
 ######MTL Annual
 
@@ -2275,6 +2781,17 @@ m.a.uvpm.xy.fit.plot.u4k <- ggplot(data = subset(long.m.a.data.stan, uvpm_conc <
                   aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
                                       stat(r.squared), stat(p.value))), parse = TRUE)
 
+#just the p < 0.05 plots, with the outliers removed as well
+m.a.bc.xy.fit.plot.u4k.pu5 <- ggplot(data = filter(long.m.a.data.stan, !is.na(bc_conc) & bc_conc < 4000 & variable %in% filter(m.a.u4k.bc.uni.reg, P.Value < 0.05)$variable), aes(x = value, y = bc_conc)) +
+  ggtitle("Montreal Annual p < 0.05 Variables vs BC (3 outliers over 4,000 removed)") +
+  geom_point() + 
+  facet_wrap(~ variable, scales = "free") +
+  stat_smooth(method="loess") + 
+  stat_fit_glance(method = "lm",
+                  method.args = list(formula = y ~ x),
+                  aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
+                                      stat(r.squared), stat(p.value))), parse = TRUE)
+
 
 ####MTL Summer Log
 
@@ -2290,6 +2807,17 @@ m.s.log.bc.xy.fit.plot <- ggplot(data = long.m.s.data.stan, aes(x = value, y = l
                   aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
                                       stat(r.squared), stat(p.value))), parse = TRUE)
 #See the log(0+1) values. There are about 6. The next lowest value is about 150, which log transformed is 5
+m.s.log.bc.uni.reg
+
+m.s.log.bc.xy.fit.plot.pu5 <- ggplot(data = filter(long.m.s.data.stan, !is.na(bc_conc) & variable %in% filter(m.s.log.bc.uni.reg, P.Value < 0.05)$variable), aes(x = value, y = log(bc_conc+1))) +
+  ggtitle("Montreal Summer p < 0.05 Variables vs log(BC)") +
+  geom_point() + 
+  facet_wrap(~ variable, scales = "free") +
+  stat_smooth(method="loess") + 
+  stat_fit_glance(method = "lm",
+                  method.args = list(formula = y ~ x),
+                  aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
+                                      stat(r.squared), stat(p.value))), parse = TRUE)
 
 
 #in case we want them on separate sheets. There were 121 rows for each variable when I wrote this, but now there are fewer. Check before running
@@ -2447,6 +2975,18 @@ t.uvpm.xy.fit.plot.u10k <- ggplot(data = subset(long.t.s.data.stan, uvpm_conc < 
                                       stat(r.squared), stat(p.value))), parse = TRUE)
 
 
+# just the p < 0.05 and the u10k
+t.bc.xy.fit.plot.u10k.pu5 <- ggplot(data = filter(long.t.s.data.stan, !is.na(bc_conc) & bc_conc < 10000 & variable %in% filter(to.u10k.bc.uni.reg, P.Value < 0.05)$variable), aes(x = value, y = bc_conc)) +
+  ggtitle("Toronto Summer p < 0.05 Variables vs BC (1 outlier over 10,000 removed)") +
+  geom_point() + 
+  facet_wrap(~ variable, scales = "free") +
+  stat_smooth(method="loess") + 
+  stat_fit_glance(method = "lm",
+                  method.args = list(formula = y ~ x),
+                  aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
+                                      stat(r.squared), stat(p.value))), parse = TRUE)
+
+
 #in case we want them on separate sheets. This was oroginally with a longer data set (100 rows), but now it is shorter, so the 1:1600 etc need to be changed
 ggplot(data = subset(long.t.s.data.stan[1:1600, ], bc_conc < 10000), aes(x = value, y = bc_conc)) +
   geom_point() + 
@@ -2542,10 +3082,10 @@ ggplot(data = subset(long.t.s.data.stan[14401:14800, ], bc_conc < 10000), aes(x 
 # Pooled XY Fit Plots #######
 
 ########MTL plots, start with just scatter plots of each variable vs bc. Add fit lines and p values and R2
-str(long.mts.data.pool.stan)
-describe(long.mts.data.pool.stan$bc_conc)
+str(long.mts.pool.data.stan)
+describe(long.mts.pool.data.stan$bc_conc)
 #super slow, but good. Only slow when I display the ggplot, entering as below is fast. Saved as 4k x 4k and then look at the image (file name MTS.pool.bc.v.var.plot.loess.alldata.png)
-mts.pool.bc.xy.fit.plot.alldata <- ggplot(data = long.mts.data.pool.stan, aes(x = value, y = bc_conc)) +
+mts.pool.bc.xy.fit.plot.alldata <- ggplot(data = long.mts.pool.data.stan, aes(x = value, y = bc_conc)) +
   ggtitle("Pooled Summer Variables vs BC") +
   geom_point() +
   facet_wrap(~ variable, scales = "free") +
@@ -2555,7 +3095,7 @@ mts.pool.bc.xy.fit.plot.alldata <- ggplot(data = long.mts.data.pool.stan, aes(x 
                   aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
                                       stat(r.squared), stat(p.value))), parse = TRUE)
 #repeat for uvpm, saved as MTS.pool.uvpm.v.var.plot.loess.alldata.png
-mts.pool.uvpm.xy.fit.plot.alldata <- ggplot(data = long.mts.data.pool.stan, aes(x = value, y = uvpm_conc)) +
+mts.pool.uvpm.xy.fit.plot.alldata <- ggplot(data = long.mts.pool.data.stan, aes(x = value, y = uvpm_conc)) +
   ggtitle("Pooled Summer Variables vs UVPM") +
   geom_point() +
   facet_wrap(~ variable, scales = "free") +
@@ -2567,8 +3107,8 @@ mts.pool.uvpm.xy.fit.plot.alldata <- ggplot(data = long.mts.data.pool.stan, aes(
 
 
 #That one 40k point might be driving a lot of stuff. Saved as 4k x 4k and then look at the image (file name MTS.pool.bc.v.var.plot.loess.u10k.png)
-nrow(subset(long.mts.data.pool.stan, bc_conc > 10000))
-mts.pool.bc.xy.fit.plot.u10k <- ggplot(data = subset(long.mts.data.pool.stan, bc_conc < 10000), aes(x = value, y = bc_conc)) +
+nrow(subset(long.mts.pool.data.stan, bc_conc > 10000))
+mts.pool.bc.xy.fit.plot.u10k <- ggplot(data = subset(long.mts.pool.data.stan, bc_conc < 10000), aes(x = value, y = bc_conc)) +
   ggtitle("Montreal+Toronto Summer Pooled Variables vs BC (4 outliers over 10,000 removed)") +
   geom_point() + 
   facet_wrap(~ variable, scales = "free") +
@@ -2578,7 +3118,7 @@ mts.pool.bc.xy.fit.plot.u10k <- ggplot(data = subset(long.mts.data.pool.stan, bc
                   aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
                                       stat(r.squared), stat(p.value))), parse = TRUE)
 #repeat for uvpm, saved as MTS.pool.uvpm.v.var.plot.loess.u10k.png
-mts.pool.uvpm.xy.fit.plot.u10k <- ggplot(data = subset(long.mts.data.pool.stan, uvpm_conc < 10000), aes(x = value, y = uvpm_conc)) +
+mts.pool.uvpm.xy.fit.plot.u10k <- ggplot(data = subset(long.mts.pool.data.stan, uvpm_conc < 10000), aes(x = value, y = uvpm_conc)) +
   ggtitle("Montreal+Toronto Summer Pooled Variables vs UVPM (4 outliers over 10,000 removed)") +
   geom_point() + 
   facet_wrap(~ variable, scales = "free") +
@@ -2590,11 +3130,317 @@ mts.pool.uvpm.xy.fit.plot.u10k <- ggplot(data = subset(long.mts.data.pool.stan, 
 
 
 #looks at the hists for NPRI_PM, NPRI_Nox, tot_traffic
+mts.pool.u10k.bc.uni.reg
+#only p < 0.05 and without outliers
+mts.pool.xy.fit.plot.u10k.pu5 <- ggplot(data = filter(long.mts.pool.data.stan, !is.na(bc_conc) & bc_conc < 10000 & variable %in% filter(mts.pool.u10k.bc.uni.reg, P.Value < 0.05)$variable), aes(x = value, y = bc_conc)) +
+  ggtitle("MTL + TO Pooled p < 0.05 Variables vs BC (1 outlier over 10,000 removed)") +
+  geom_point() + 
+  facet_wrap(~ variable, scales = "free") +
+  stat_smooth(method="loess") + 
+  stat_fit_glance(method = "lm",
+                  method.args = list(formula = y ~ x),
+                  aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
+                                      stat(r.squared), stat(p.value))), parse = TRUE)
+
+#need a .reg for the under 7k
+#mts.pool.xy.fit.plot.u7k.pu5 <- ggplot(data = filter(long.mts.pool.data.stan, !is.na(bc_conc) & bc_conc < 7000 & variable %in% filter(mts.pool.u10k.bc.uni.reg, P.Value < 0.05)$variable), aes(x = value, y = bc_conc)) +
+  ggtitle("MTL + TO Pooled p < 0.05 Variables vs BC (1 outlier over 10,000 removed)") +
+  geom_point() + 
+  facet_wrap(~ variable, scales = "free") +
+  stat_smooth(method="loess") + 
+  stat_fit_glance(method = "lm",
+                  method.args = list(formula = y ~ x),
+                  aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
+                                      stat(r.squared), stat(p.value))), parse = TRUE)
 
 
 
 
-# Predictor Selection ######
+# Residuals Histograms ####
+  
+##MTL Summer
+m.s.outlier.level
+resid_hist_m_s_u4k_bc <- subset(long.m.s.data.stan, bc_conc < m.s.outlier.level) %>% 
+    nest(-variable) %>% 
+    mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)), resids = map(fit, residuals)) %>%
+    unnest(resids) %>%
+    ggplot(data = ., aes(x = resids)) + 
+      geom_histogram() +  
+      facet_wrap(~ variable, scales = "free") +
+      ggtitle("Montreal Summer Residual Histograms for All Uni Regs (4 BC outliers > 4000 removed)")
+#saved as resid_hist_m_s_u4k_bc.png, 4k x 4k
+  
+#check to confirm it is correct. First get that unnested data, trim everything except build_1000m and check it. Then just run my own lm() and check resids. 
+hist.try.data <- subset(long.m.s.data.stan, bc_conc < m.s.outlier.level) %>% 
+    nest(-variable) %>% 
+    mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)), resids = map(fit, residuals)) %>%
+    unnest(resids)
+nrow(filter(hist.try.data, variable == "build_1000m"))
+filter(hist.try.data, variable == "build_1000m")
+ggplot(data = filter(hist.try.data, variable == "build_1000m"), aes(x = resids)) + geom_histogram()
+#yeah  it looks good!
+#now just do it from simple lm()
+m.s.data.stan %>%
+    subset(bc_conc < 4000) %>%
+    lm(data = ., bc_conc ~ build_1000m) %>%
+    residuals() %>% 
+    hist(breaks = 20)
+#not the exact same, but the bin widths are different. Looks pretty dang similar. Run another one just to make sure
+m.s.data.stan %>%
+    subset(bc_conc < 4000) %>%
+    lm(data = ., bc_conc ~ bus_100m) %>%
+    residuals() %>% 
+    hist(breaks = 25)
+#i'd say they look pretty good
+
+#MTL Summer only p < 0.05 plots
+filter(long.m.s.data.stan, bc_conc < 4000 & variable %in% filter(m.s.u4k.bc.uni.reg, P.Value < 0.05)$variable)
+resid_hist_pu5_m_s_u4k_bc <- filter(long.m.s.data.stan, bc_conc < m.s.outlier.level & variable %in% filter(m.s.u4k.bc.uni.reg, P.Value < 0.05)$variable) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)), resids = map(fit, residuals)) %>%
+  unnest(resids) %>%
+  ggplot(data = ., aes(x = resids)) + 
+  geom_histogram() +  
+  facet_wrap(~ variable, scales = "free") +
+  ggtitle("Montreal Summer Residual Histograms for Uni Regs p < 0.05 (4 BC outliers > 4000 removed)")
+#saved as resid_hist_pu5_m_s_u4k_bc.png, 3k x 3k (41 plots)
+
+#only the ones selected for the model.
+#Note: needs code from below to be run, it has the m.s.u4k.lin.variables vector from the Variable Selection section 
+resid_hist_selected_m_s_u4k_bc <- filter(long.m.s.data.stan, bc_conc < m.s.outlier.level & variable %in% m.s.u4k.lin.variables) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)), resids = map(fit, residuals)) %>%
+  unnest(resids) %>%
+  ggplot(data = ., aes(x = resids)) + 
+  geom_histogram() +  
+  facet_wrap(~ variable, scales = "free") +
+  ggtitle("Montreal Summer Residual Histograms for Uni Regs of Selected Variables (4 BC outliers > 4000 removed)")
+#saved as resid_hist_selected_m_s_u4k_bc.png
+
+#MTL Summer log Reg residuals hist, only p < 0.05 plots
+filter(long.m.s.data.stan, variable %in% filter(m.s.log.bc.uni.reg, P.Value < 0.05)$variable)
+resid_hist_pu5_m_s_log_bc <- filter(long.m.s.data.stan, variable %in% filter(m.s.log.bc.uni.reg, P.Value < 0.05)$variable) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(log(bc_conc + 1) ~ value, data = .)), resids = map(fit, residuals)) %>%
+  unnest(resids) %>%
+  ggplot(data = ., aes(x = resids)) + 
+  geom_histogram() +  
+  facet_wrap(~ variable, scales = "free") +
+  ggtitle("Montreal Summer Residual Histograms for log Uni Regs p < 0.05")
+
+hist.log.try.data <- filter(long.m.s.data.stan, bc_conc > 0) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(log(bc_conc) ~ value, data = .)), resids = map(fit, residuals)) %>%
+  unnest(resids)
+ggplot(data = filter(hist.log.try.data, variable == "bus_stop_500m"), aes(x = resids)) + geom_histogram()
+#it's those bc_conc = 0 values that are out there
+
+#MTL Summer log Reg residuals hist, only p < 0.05 plots, BC = 0 filtered out
+resid_hist_pu5_m_s_log_o0_bc <- filter(long.m.s.data.stan, bc_conc > 0, variable %in% filter(m.s.log.o0.bc.uni.reg, P.Value < 0.05)$variable) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(log(bc_conc + 1) ~ value, data = .)), resids = map(fit, residuals)) %>%
+  unnest(resids) %>%
+  ggplot(data = ., aes(x = resids)) + 
+  geom_histogram() +  
+  facet_wrap(~ variable, scales = "free") +
+  ggtitle("Montreal Summer Residual Histograms for log Uni Regs p < 0.05 (BC = 0 removed)")
+
+
+
+
+
+##MTL Winter
+resid_hist_m_w_bc <- long.m.w.data.stan %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)), resids = map(fit, residuals)) %>%
+  unnest(resids) %>%
+  ggplot(data = ., aes(x = resids)) + 
+    geom_histogram() +  
+    facet_wrap(~ variable, scales = "free") +
+    ggtitle("Montreal Winter Residual Histograms for All Uni Regs)")
+#saved as resid_hist_m_w_bc.png
+## MTL Winter only p < 0.05 plots
+resid_hist_pu5_m_w_bc <- filter(long.m.w.data.stan, variable %in% filter(m.w.bc.uni.reg, P.Value < 0.05)$variable) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)), resids = map(fit, residuals)) %>%
+  unnest(resids) %>%
+  ggplot(data = ., aes(x = resids)) + 
+  geom_histogram() +  
+  facet_wrap(~ variable, scales = "free") +
+  ggtitle("Montreal Winter Residual Histograms for Uni Regs p < 0.05")
+#saved as resid_hist_pu5_m_w_bc.png, 3k x 3k (58 plots)
+
+
+
+
+
+
+
+##MTL Annual
+resid_hist_m_a_u4k_bc <- subset(long.m.a.data.stan, bc_conc < m.a.outlier.level) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)), resids = map(fit, residuals)) %>%
+  unnest(resids) %>%
+  ggplot(data = ., aes(x = resids)) + 
+    geom_histogram() +  
+    facet_wrap(~ variable, scales = "free") +
+    ggtitle("Montreal Annual Residual Histograms for All Uni Regs (3 BC outliers > 4000 removed)")
+#saved as resid_hist_m_a_u4k_bc.png
+#MTL Annual only p < 0.05 plots
+resid_hist_pu5_m_a_u4k_bc <- filter(long.m.a.data.stan, bc_conc < m.a.outlier.level & variable %in% filter(m.a.u4k.bc.uni.reg, P.Value < 0.05)$variable) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)), resids = map(fit, residuals)) %>%
+  unnest(resids) %>%
+  ggplot(data = ., aes(x = resids)) + 
+  geom_histogram() +  
+  facet_wrap(~ variable, scales = "free") +
+  ggtitle("Montreal Annual Residual Histograms for Uni Regs p < 0.05 (3 BC outliers > 4000 removed)")
+#saved as resid_hist_pu5_m_a_u4k_bc.png
+
+#MTL Annual log Uni reg histogrm, p < 0.05
+describe(filter(long.m.a.data.stan, variable %in% filter(m.a.log.bc.uni.reg, P.Value < 0.05)$variable))
+resid_hist_pu5_m_a_log_bc <- filter(long.m.a.data.stan, variable %in% filter(m.a.log.bc.uni.reg, P.Value < 0.05)$variable) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(log(bc_conc + 1) ~ value, data = .)), resids = map(fit, residuals)) %>%
+  unnest(resids) %>%
+  ggplot(data = ., aes(x = resids)) + 
+  geom_histogram() +  
+  facet_wrap(~ variable, scales = "free") +
+  ggtitle("Montreal Annual Residual Histograms for log Uni Regs p < 0.05")
+describe(m.a.data.stan$bc_conc)
+#there are no bc_conc = 0 values for m.a., that would require winter and summer to have zero.
+
+#MTL Annual log Uni reg histogrm, p < 0.05, BC > 4000 removed
+describe(filter(long.m.a.data.stan, variable %in% filter(m.a.log.u4k.bc.uni.reg, P.Value < 0.05)$variable))
+resid_hist_pu5_m_a_log_u4k_bc <- filter(long.m.a.data.stan, variable %in% filter(m.a.log.u4k.bc.uni.reg, P.Value < 0.05)$variable) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(log(bc_conc + 1) ~ value, data = .)), resids = map(fit, residuals)) %>%
+  unnest(resids) %>%
+  ggplot(data = ., aes(x = resids)) + 
+  geom_histogram() +  
+  facet_wrap(~ variable, scales = "free") +
+  ggtitle("Montreal Annual Residual Histograms for log Uni Regs p < 0.05 (3 BC outliers > 4,000 removed)")
+describe(m.a.data.stan$bc_conc)
+#there are no bc_conc = 0 values for m.a., that would require winter and summer to have zero.
+
+setdiff(filter(m.a.log.u4k.bc.uni.reg, P.Value < 0.05)$variable, filter(m.a.u4k.bc.uni.reg, P.Value < 0.05)$variable)
+setdiff(filter(m.a.u4k.bc.uni.reg, P.Value < 0.05)$variable, filter(m.a.log.u4k.bc.uni.reg, P.Value < 0.05)$variable)
+
+
+
+
+
+
+
+##TO Summer
+resid_hist_t_s_u10k_bc <- subset(long.t.s.data.stan, bc_conc < t.outlier.level) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)), resids = map(fit, residuals)) %>%
+  unnest(resids) %>%
+  ggplot(data = ., aes(x = resids)) + 
+  geom_histogram() +  
+  facet_wrap(~ variable, scales = "free") +
+  ggtitle("Toronto Summer Residual Histograms for All Uni Regs (1 BC outlier > 10,000 removed)")
+#saved as resid_hist_t_s_u10k_bc.png
+#TO only p < 0.05 plots
+resid_hist_pu5_t_s_u10k_bc <- filter(long.t.s.data.stan, bc_conc < t.outlier.level & variable %in% filter(to.u10k.bc.uni.reg, P.Value < 0.05)$variable) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)), resids = map(fit, residuals)) %>%
+  unnest(resids) %>%
+  ggplot(data = ., aes(x = resids)) + 
+  geom_histogram() +  
+  facet_wrap(~ variable, scales = "free") +
+  ggtitle("Toronto Summer Residual Histograms for Uni Regs p < 0.05 (1 BC outlier > 10,000 removed)")
+#saved as resid_hist_pu5_t_s_u10k_bc.png
+
+#TO log uni reg resids, p < 0.05
+filter(long.t.s.data.stan, variable %in% filter(to.log.bc.uni.reg, P.Value < 0.05)$variable)
+resid_hist_pu5_to_log_bc <- filter(long.t.s.data.stan, variable %in% filter(to.log.bc.uni.reg, P.Value < 0.05)$variable) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(log(bc_conc + 1) ~ value, data = .)), resids = map(fit, residuals)) %>%
+  unnest(resids) %>%
+  ggplot(data = ., aes(x = resids)) + 
+  geom_histogram() +  
+  facet_wrap(~ variable, scales = "free") +
+  ggtitle("Toronto Residual Histograms for log Uni Regs p < 0.05")
+describe(t.s.data.stan$bc_conc)
+#the 0 and 52 are the low outlier and 40k is the high outlier. The 40k isn't that bad. 
+
+
+resid_hist_pu5_to_log_o100_bc <- filter(long.t.s.data.stan, bc_conc > 0, variable %in% filter(to.log.o100.bc.uni.reg, P.Value < 0.05)$variable) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(log(bc_conc + 1) ~ value, data = .)), resids = map(fit, residuals)) %>%
+  unnest(resids) %>%
+  ggplot(data = ., aes(x = resids)) + 
+  geom_histogram() +  
+  facet_wrap(~ variable, scales = "free") +
+  ggtitle("Toronto Residual Histograms for log Uni Regs p < 0.05 (2 BC outliers < 100 removed)")
+describe(t.s.data.stan$bc_conc)
+
+
+
+
+
+long.mts.pool.data.stan
+##MTL Summer + TO Summer Pooled
+resid_hist_mts_pool_u10k_bc <- subset(long.mts.pool.data.stan, bc_conc < mts.pool.outlier.level) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)), resids = map(fit, residuals)) %>%
+  unnest(resids) %>%
+  ggplot(data = ., aes(x = resids)) + 
+  geom_histogram() +  
+  facet_wrap(~ variable, scales = "free") +
+  ggtitle("Montreal and Toronto Summer Pooled Residual Histograms for All Uni Regs (1 BC outlier > 10,000 removed)")
+#saved as resid_hist_mts_pool_u10k_bc.png
+#MTL TO pooled only p < 0.05 plots
+resid_hist_pu5_mts_pool_u10k_bc <- filter(long.mts.pool.data.stan, bc_conc < mts.pool.outlier.level & variable %in% filter(mts.pool.u10k.bc.uni.reg, P.Value < 0.05)$variable) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)), resids = map(fit, residuals)) %>%
+  unnest(resids) %>%
+  ggplot(data = ., aes(x = resids)) + 
+  geom_histogram() +  
+  facet_wrap(~ variable, scales = "free") +
+  ggtitle("Montreal and Toronto Summer Pooled Residual Histograms for Uni Regs p < 0.05 (1 BC outlier > 10,000 removed)")
+#saved as resid_hist_pu5_mts_pool_u10k_bc.png
+
+#quick check to see what happens if we cut out the 4 mtl outliers
+filter(long.mts.pool.data.stan, bc_conc < 7000 & variable %in% filter(mts.pool.u10k.bc.uni.reg, P.Value < 0.05)$variable) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)), resids = map(fit, residuals)) %>%
+  unnest(resids) %>%
+  ggplot(data = ., aes(x = resids)) + 
+  geom_histogram() +  
+  facet_wrap(~ variable, scales = "free") +
+  ggtitle("Montreal and Toronto Summer Pooled Residual Histograms for Uni Regs p < 0.05 (5 BC outliers > 7,000 removed)")
+#still skewed
+
+#log MTL TO pooled only p < 0.05 plots
+resid_hist_pu5_mts_pool_log_bc <- filter(long.mts.pool.data.stan, variable %in% filter(mts.pool.log.bc.uni.reg, P.Value < 0.05)$variable) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(log(bc_conc + 1) ~ value, data = .)), resids = map(fit, residuals)) %>%
+  unnest(resids) %>%
+  ggplot(data = ., aes(x = resids)) + 
+  geom_histogram() +  
+  facet_wrap(~ variable, scales = "free") +
+  ggtitle("Montreal and Toronto Summer Pooled Residual Histograms for log Uni Regs p < 0.05")
+#saved as resid_hist_pu5_mts_pool_u10k_bc.png
+
+
+describe(filter(long.mts.pool.data.stan, bc_conc > 0, variable %in% filter(mts.pool.log.o0.bc.uni.reg, P.Value < 0.05)$variable))
+nrow(filter(mts.pool.log.o0.bc.uni.reg, P.Value < .05))
+#log MTL TO pooled only p < 0.05 plots, BC =/= 0
+resid_hist_pu5_mts_pool_log_o0_bc <- filter(long.mts.pool.data.stan, bc_conc > 0, variable %in% filter(mts.pool.log.o0.bc.uni.reg, P.Value < 0.05)$variable) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(log(bc_conc + 1) ~ value, data = .)), resids = map(fit, residuals)) %>%
+  unnest(resids) %>%
+  ggplot(data = ., aes(x = resids)) + 
+  geom_histogram() +  
+  facet_wrap(~ variable, scales = "free") +
+  ggtitle("Montreal and Toronto Summer Pooled Residual Histograms for log Uni Regs p < 0.05 (BC = 0 removed)")
+#saved as resid_hist_pu5_mts_pool_u10k_bc.png
+
+
+# Comparing All Regressions (with and without outliers)######
 #there are five groups of uni regressions:
   #MTL Summer
   #MTL Winter
@@ -2648,9 +3494,9 @@ to.uni.var.sel <- data.frame(Predictor = colnames(t.s.data.stan[ , 5:ncol(t.s.da
 
 mts.pool.uni.var.sel <- data.frame(Predictor = colnames(mts.data.pool.stan[ , 6:ncol(mts.data.pool.stan)]),
                                    M_T_BC = ifelse(mts.pool.bc.uni.reg$P.Value < 0.05, round(mts.pool.bc.uni.reg$r.squared, 2), NA), 
-                             M_T_BC_u10k = ifelse(u10k.mts.pool.bc.uni.reg$P.Value < 0.05, round(u10k.mts.pool.bc.uni.reg$r.squared, 2), NA), 
+                             M_T_BC_u10k = ifelse(mts.pool.u10k.bc.uni.reg$P.Value < 0.05, round(mts.pool.u10k.bc.uni.reg$r.squared, 2), NA), 
                              M_T_UVPM = ifelse(mts.pool.uvpm.uni.reg$P.Value < 0.05, round(mts.pool.uvpm.uni.reg$r.squared, 2), NA),
-                             M_T_UVPM_u10k = ifelse(u10k.mts.pool.uvpm.uni.reg$P.Value < 0.05, round(u10k.mts.pool.uvpm.uni.reg$r.squared, 2), NA),
+                             M_T_UVPM_u10k = ifelse(mts.pool.u10k.uvpm.uni.reg$P.Value < 0.05, round(mts.pool.u10k.uvpm.uni.reg$r.squared, 2), NA),
                              pred_max_val = round(apply(mts.data.pool.stan[ , 6:ncol(mts.data.pool.stan)], 2, max), 1),
                              pred_over_3sd = apply(mts.data.pool.stan[ , 6:ncol(mts.data.pool.stan)], 2, outliers.3sd)
                               )
@@ -2709,6 +3555,7 @@ formattable(filter(mts.pool.uni.var.sel, rowSums(is.na(mts.pool.uni.var.sel)) !=
                 )
               )
 
+#trying to put all of the variables together
 str(m.s.determinants)
 str(m.s.uni.var.sel)
 str(to.uni.var.sel)
@@ -2719,6 +3566,8 @@ pred.vars <- as_tibble(colnames(m.s.determinants[,-1]))
 colnames(pred.vars) <- "Predictor"
 str(pred.vars)
 pred.vars$Predictor <- as.factor(pred.vars$Predictor)
+str(m.s.uni.var.sel$Predictor)
+#this was working.....but now it isn't. Dayum. 
 all.uni.reg.r2 <- full_join(pred.vars, m.s.uni.var.sel[,c(-1,-7,-8)], by = "Predictor") %>%
   full_join(m.w.uni.var.sel[ , c(-1, -5,-6)], by = "Predictor") %>%
   full_join(m.a.uni.var.sel[ ,c(-1, -7,-8)], by = "Predictor") %>%
@@ -2727,10 +3576,103 @@ all.uni.reg.r2 <- full_join(pred.vars, m.s.uni.var.sel[,c(-1,-7,-8)], by = "Pred
 
 
 formattable(all.data.together)
-write.csv(all.uni.reg.r2, "all_uni_reg_r2.csv")
+#hashtaged out to not keep writing. 
+#write.csv(all.uni.reg.r2, "all_uni_reg_r2.csv")
 
 
 
+
+
+
+
+
+# Uni Results Tables #######
+#as discussed, focus on BC, pull out the outliers, and don't bother with a Winter for now
+#err on the side of keeping data in, so for mts.pool, the MTL S outliers aren't as huge so keep them in. 
+#also looking for log() regressions. 
+#this leaves: m.s.bc.u4k, m.a.bc.u4k, t.bc.u10k, mts.pool.bc.u10k......and then the logs
+
+#try splitting the first column for the table
+separate(m.s.uvpm.uni.reg, col = variable, into = c("Independent Variable", "Buffer Size"), sep = "_", remove = TRUE)
+#that works, but we'vev got those d_  and tot_ variables
+m.s.uvpm.uni.reg$variable
+sub("d_[[:alpha:]]", "d.", m.s.uvpm.uni.reg$variable)
+gsub("^d_", "d.", m.s.uvpm.uni.reg$variable)
+gsub("tot_", "tot.", m.s.uvpm.uni.reg$variable)
+
+m.s.u4k.bc.uni.reg
+
+#change the names of variables to make it easier to split
+tbl.m.s.u4k.bc.uni <- m.s.u4k.bc.uni.reg
+tbl.m.s.u4k.bc.uni$variable <- tbl.m.s.u4k.bc.uni$variable %>%
+  gsub("^d_", "d.", .) %>%
+  gsub("^NPRI_", "NPRI.", .) %>%
+  gsub("^tot_", "tot.", .) %>%
+  gsub("^bus_stop", "bus.stop", .)
+
+#split, remove the p > 0.05, and take out the SE and P.Value Columns. 
+tbl.m.s.u4k.bc.uni %>%
+  separate(col = variable, into = c("Independent Variable", "Buffer Size"), sep = "_", remove = TRUE) %>%
+  filter(P.Value < 0.05) %>%
+  select(-SE, -P.Value) %>%
+  formattable()
+
+#change the names of variables to make it easier to split
+tbl.m.a.u4k.bc.uni <- m.a.u4k.bc.uni.reg
+tbl.m.a.u4k.bc.uni$variable <- tbl.m.a.u4k.bc.uni$variable %>%
+  gsub("^d_", "d.", .) %>%
+  gsub("^NPRI_", "NPRI.", .) %>%
+  gsub("^d.NPRI_", "d.NPRI.", .) %>%
+  gsub("^tot_", "tot.", .) %>%
+  gsub("^bus_stop", "bus.stop", .)
+
+#split, remove the p > 0.05, and take out the SE and P.Value Columns. 
+tbl.m.a.u4k.bc.uni %>%
+  separate(col = variable, into = c("Independent Variable", "Buffer Size"), sep = "_", remove = TRUE) %>%
+  filter(P.Value < 0.05) %>%
+  select(-SE, -P.Value) %>%
+  formattable()
+
+
+#change the names of variables to make it easier to split
+tbl.to.u10k.bc.uni <- to.u10k.bc.uni.reg
+tbl.to.u10k.bc.uni$variable <- tbl.to.u10k.bc.uni$variable %>%
+  gsub("^d_", "d.", .) %>%
+  gsub("^NPRI_", "NPRI.", .) %>%
+  gsub("^d.NPRI_", "d.NPRI.", .) %>%
+  gsub("^tot_", "tot.", .) %>%
+  gsub("^bus_stop", "bus.stop", .)
+
+#split, remove the p > 0.05, and take out the SE and P.Value Columns. 
+tbl.to.u10k.bc.uni %>%
+  separate(col = variable, into = c("Independent Variable", "Buffer Size"), sep = "_", remove = TRUE) %>%
+  filter(P.Value < 0.05) %>%
+  select(-SE, -P.Value) %>%
+  formattable()
+
+#change the names of variables to make it easier to split
+tbl.mts.pool.u10k.bc.uni <- mts.pool.u10k.bc.uni.reg
+tbl.mts.pool.u10k.bc.uni$variable <- tbl.mts.pool.u10k.bc.uni$variable %>%
+  gsub("^d_", "d.", .) %>%
+  gsub("^NPRI_", "NPRI.", .) %>%
+  gsub("^d.NPRI_", "d.NPRI.", .) %>%
+  gsub("^tot_", "tot.", .) %>%
+  gsub("^bus_stop", "bus.stop", .)
+
+#split, remove the p > 0.05, and take out the SE and P.Value Columns. 
+tbl.mts.pool.u10k.bc.uni %>%
+  separate(col = variable, into = c("Independent Variable", "Buffer Size"), sep = "_", remove = TRUE) %>%
+  filter(P.Value < 0.05) %>%
+  select(-SE, -P.Value) %>%
+  formattable()
+
+
+
+messn <- m.s.u4k.bc.uni.reg %>%
+  unite(col = "95_CI", `X2.5.`, `X97.5.`, sep = ", ")
+#it's puts a space around the parenthesis, maybe figure this out in tables. 
+messn$`95_CI` <- paste("(", messn$`95_CI`, ")")
+messn$`95_CI`[2]
 
 colnames(m.s.determinants[ ,1:5])
 colnames(t.s.determinants[ ,1:5])
@@ -2749,6 +3691,56 @@ to.uvpm.uni.reg
 
 mts.pool.bc.uni.reg %>% nrow
 mts.pool.uvpm.uni.reg
+
+# Variable Selection MTL S ######
+#look at file pu5_m_s_u4k_bc.png for the p < 0.05 graphs and the tbl.m.s.u4k.bc.uni too
+m.s.u4k.lin.variables <- c("build_1000m", "mjrd_750m", "d_majrd", "bus_50m", "bus_stop_750m", "traffic_750m", "tot_traffic_750m", "Nox_750m", "tot_Nox_750m", "d_NPRI_Nox", "d_airport")
+summary(lm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ build_1000m + mjrd_750m + d_majrd + bus_50m + bus_stop_750m + traffic_750m + tot_traffic_750m + Nox_750m + tot_Nox_750m + d_NPRI_Nox + d_airport))
+#woof
+
+
+#####checking possible non-linear and IV outlier influence while selecting vars
+#d_majrd might be non-linear
+summary(lm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ d_majrd))
+summary(lm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ I(d_majrd^2)))
+summary(lm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ d_majrd + I(d_majrd^2)))
+#the non-linear terms have p > 0.05, so d_majrd is only linear
+#check to make sure that I() is legit. It is
+dmsfn <- data.frame(bc = m.s.data.stan$bc_conc, d = m.s.data.stan$d_majrd, dd = m.s.data.stan$d_majrd*m.s.data.stan$d_majrd)
+summary(lm(data = filter(dmsfn, bc < 4000), bc ~ d + dd))
+
+#bus_50m looks like an outlier might be driving it, check without the outlier
+summary(lm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ bus_50m))
+summary(lm(data = filter(m.s.data.stan, bc_conc < 4000 & bus_50m < 4), bc_conc ~ bus_50m))
+#p is still under 0.05 and Beta is very similar, R^2 is similar too. I think it's worth keeping
+
+#traffic_750m has 6 points above 2sd and 3 above 3sd. 
+summary(lm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ traffic_750m))
+summary(lm(data = filter(m.s.data.stan, bc_conc < 4000 & traffic_750m < 2), bc_conc ~ traffic_750m))
+summary(lm(data = filter(m.s.data.stan, bc_conc < 4000 & traffic_750m < 3), bc_conc ~ traffic_750m))
+#the 6 above 2sd are driving it, but the 3 above 3sd are not. Keep in for now, but keep in mind. 
+#there should be about 4 points above 2sd (92 observations)
+#traffic and tot_traffic are pretty close to being the same. 
+
+#tot_Nox_750m has 7 over 2sd and 1 over 3sd
+summary(lm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ tot_Nox_750m))
+summary(lm(data = filter(m.s.data.stan, bc_conc < 4000 & tot_Nox_750m < 2), bc_conc ~ tot_Nox_750m))
+summary(lm(data = filter(m.s.data.stan, bc_conc < 4000 & tot_Nox_750m < 3), bc_conc ~ tot_Nox_750m))
+#all still under 0.05
+
+#d_NPRI_Nox might be non-linear
+summary(lm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ d_NPRI_Nox))
+summary(lm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ I(d_NPRI_Nox^2)))
+summary(lm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ d_majrd + I(d_NPRI_Nox^2)))
+#nope
+
+#d_airport might be non-linear
+summary(lm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ d_airport))
+summary(lm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ I(d_airport^2)))
+summary(lm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ d_majrd + I(d_airport^2)))
+#nope
+
+######maybe check in the p > 0.05 for some non-linears?
 
 
 # Predictor Counts ######
@@ -2862,7 +3854,8 @@ formattable(as.data.frame(uni.vars))
 
 ###trying bic.glm
 str(m.s.data.stan)
-
+sum(is.na(m.s.data.stan$bc_conc))
+sum(is.na(m.s.data.stan$uvpm_conc))
 bic.glm(data = m.s.data.stan, formula(bc_conc ~ . - bc_conc - uvpm_conc), glm.family = gaussian())
 nrow(m.s.data.stan[ , 4:156])
 length(m.s.data.stan$d_port)
@@ -2876,6 +3869,21 @@ describe(m.s.data.stan$bc_conc)
 str(m.s.data.stan)
 
 # Working Notes ########
+
+#13 June
+#made a bit of progress on making a pretty table to show the uni results
+#did first pass variable selection for MTL S. When combined, the R^2 is pretty low. Could got through the process for the others.
+#made residual histogram plots for all the uni regressions (the 5 for BC and with minimal outliers cut out)
+  #MTL residuals look pretty normal
+#TO and pooled residuals look a little more skewed. 
+#next steps:
+  #do log models and look at residuals
+  #organize residual plots and maybe make an html
+  #build the 2 other non-log MTL models
+  #maybe build TO or log models.
+  #make prettier plots
+  #look into wood burning coordinates
+
 
 #2 June direction from Scott:
 #focus on MTL S, TO S, Pooled S, MTL Winter, MTL Annual

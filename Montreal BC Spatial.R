@@ -2477,7 +2477,7 @@ write.csv(mts.pool.u10k.uvpm.uni.reg, file = "M_T_Pool_u10k_UVPM_Uni_Regressions
 
 
 
-
+#the 40k BC outlier is so clearly an outlier that I'm not even going to try to keep it in with everything. 
 #do simple regressions on log(bc_conc + 1) for each of the determinants
 mts.pool.log.bc.uni.beta.p <- long.mts.pool.data.stan %>%
   group_by(variable) %>%
@@ -2545,16 +2545,13 @@ nrow(subset(mts.pool.log.bc.uni.reg, P.Value <= 0.05))
 nrow(subset(mts.pool.bc.uni.reg, P.Value <= 0.05))
 #23 with the log transform, 52 without it
 
+subset(mts.pool.bc.uni.reg, P.Value < 0.05)$variable
+filter(mts.pool.bc.uni.reg, P.Value < 0.05)$variable
 
 
 
-
-
-
-
-########remove the BC = 0 
-#do simple regressions on log(bc_conc + 1) for each of the determinants
-mts.pool.log.o0.bc.uni.beta.p <- filter(long.mts.pool.data.stan, bc_conc > 0) %>%
+# try with BC < 10k
+mts.pool.log.u10k.bc.uni.beta.p <- filter(long.mts.pool.data.stan, bc_conc < 10000) %>%
   group_by(variable) %>%
   do(tidy(lm(log(bc_conc + 1) ~ value, .))) %>%
   filter(term == "value") %>%
@@ -2562,7 +2559,7 @@ mts.pool.log.o0.bc.uni.beta.p <- filter(long.mts.pool.data.stan, bc_conc > 0) %>
   select(Beta, SE, "P Value") %>% 
   as.data.frame()
 #to get CIs
-mts.pool.log.o0.bc.uni.cis <- filter(long.mts.pool.data.stan, bc_conc > 0) %>%
+mts.pool.log.u10k.bc.uni.cis <- filter(long.mts.pool.data.stan, bc_conc < 10000) %>%
   group_by(variable) %>%
   do(tidy(confint(lm(log(bc_conc + 1) ~ value, .)))) %>%
   filter(.rownames == "value") %>%
@@ -2570,7 +2567,7 @@ mts.pool.log.o0.bc.uni.cis <- filter(long.mts.pool.data.stan, bc_conc > 0) %>%
   select("2.5%", "97.5%") %>% 
   as.data.frame()
 #get the R2
-mts.pool.log.o0.bc.uni.r2 <- filter(long.mts.pool.data.stan, bc_conc > 0) %>%
+mts.pool.log.u10k.bc.uni.r2 <- filter(long.mts.pool.data.stan, bc_conc < 10000) %>%
   nest(-variable) %>% 
   mutate(fit = map(data, ~ lm(log(bc_conc + 1) ~ value, data = .)),
          results = map(fit, glance)) %>% 
@@ -2580,12 +2577,54 @@ mts.pool.log.o0.bc.uni.r2 <- filter(long.mts.pool.data.stan, bc_conc > 0) %>%
 
 
 #put em together 
-mts.pool.log.o0.bc.uni.reg <- data.frame(mts.pool.log.o0.bc.uni.beta.p[ , c(1,2)], lapply(mts.pool.log.o0.bc.uni.cis[ , c(2,3)], as.numeric), round(mts.pool.log.bc.uni.r2[ ,2:3], 5), mts.pool.log.o0.bc.uni.beta.p[ , c(3,4)])
-mts.pool.log.o0.bc.uni.reg$Beta <- as.numeric(mts.pool.log.o0.bc.uni.reg$Beta)
-str(mts.pool.log.o0.bc.uni.reg)
+mts.pool.log.u10k.bc.uni.reg <- data.frame(mts.pool.log.u10k.bc.uni.beta.p[ , c(1,2)], lapply(mts.pool.log.u10k.bc.uni.cis[ , c(2,3)], as.numeric), round(mts.pool.log.bc.uni.r2[ ,2:3], 5), mts.pool.log.u10k.bc.uni.beta.p[ , c(3,4)])
+mts.pool.log.u10k.bc.uni.reg$Beta <- as.numeric(mts.pool.log.u10k.bc.uni.reg$Beta)
+str(mts.pool.log.bc.uni.reg)
+
+nrow(subset(mts.pool.log.bc.uni.reg, P.Value <= 0.05))
+nrow(subset(mts.pool.log.u10k.bc.uni.reg, P.Value <= 0.05))
+#23 with 10k and 18 without the 10k
 
 
 
+########remove the BC = 0 AND the BC = 10,000
+nrow(filter(mts.data.pool.stan, bc_conc > 0, bc_conc < 10000))
+#do simple regressions on log(bc_conc + 1) for each of the determinants
+mts.pool.log.o0u10.bc.uni.beta.p <- filter(long.mts.pool.data.stan, bc_conc > 0, bc_conc < 10000) %>%
+  group_by(variable) %>%
+  do(tidy(lm(log(bc_conc + 1) ~ value, .))) %>%
+  filter(term == "value") %>%
+  mutate(Beta = as.character(round(estimate, 2)), "P Value" = round(p.value, 3), SE = round(std.error, 1)) %>% 
+  select(Beta, SE, "P Value") %>% 
+  as.data.frame()
+#to get CIs
+mts.pool.log.o0u10.bc.uni.cis <- filter(long.mts.pool.data.stan, bc_conc > 0, bc_conc < 10000) %>%
+  group_by(variable) %>%
+  do(tidy(confint(lm(log(bc_conc + 1) ~ value, .)))) %>%
+  filter(.rownames == "value") %>%
+  mutate("2.5%" = as.character(round(X2.5.., 2)), "97.5%" = as.character(round(X97.5.., 2))) %>% 
+  select("2.5%", "97.5%") %>% 
+  as.data.frame()
+#get the R2
+mts.pool.log.o0u10.bc.uni.r2 <- filter(long.mts.pool.data.stan, bc_conc > 0, bc_conc < 10000) %>%
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(log(bc_conc + 1) ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.s.data.stan$bc_conc))))
+
+
+#put em together 
+mts.pool.log.o0u10.bc.uni.reg <- data.frame(mts.pool.log.o0u10.bc.uni.beta.p[ , c(1,2)], lapply(mts.pool.log.o0u10.bc.uni.cis[ , c(2,3)], as.numeric), round(mts.pool.log.bc.uni.r2[ ,2:3], 5), mts.pool.log.o0u10.bc.uni.beta.p[ , c(3,4)])
+mts.pool.log.o0u10.bc.uni.reg$Beta <- as.numeric(mts.pool.log.o0u10.bc.uni.reg$Beta)
+str(mts.pool.log.o0u10.bc.uni.reg)
+
+nrow(subset(mts.pool.bc.uni.reg, P.Value <= 0.05))
+nrow(subset(mts.pool.log.bc.uni.reg, P.Value <= 0.05))
+nrow(subset(mts.pool.log.u10k.bc.uni.reg, P.Value <= 0.05))
+nrow(subset(mts.pool.log.o0u10.bc.uni.reg, P.Value <= 0.05))
+#23 with 10k and 18 without the 10k
 
 
 
@@ -3426,19 +3465,21 @@ resid_hist_pu5_mts_pool_log_bc <- filter(long.mts.pool.data.stan, variable %in% 
 #saved as resid_hist_pu5_mts_pool_u10k_bc.png
 
 
-describe(filter(long.mts.pool.data.stan, bc_conc > 0, variable %in% filter(mts.pool.log.o0.bc.uni.reg, P.Value < 0.05)$variable))
+describe(filter(long.mts.pool.data.stan, bc_conc > 0, bc_conc < 10000, variable %in% filter(mts.pool.log.o0u10.bc.uni.reg, P.Value < 0.05)$variable))
 nrow(filter(mts.pool.log.o0.bc.uni.reg, P.Value < .05))
 #log MTL TO pooled only p < 0.05 plots, BC =/= 0
-resid_hist_pu5_mts_pool_log_o0_bc <- filter(long.mts.pool.data.stan, bc_conc > 0, variable %in% filter(mts.pool.log.o0.bc.uni.reg, P.Value < 0.05)$variable) %>% 
+resid_hist_pu5_mts_pool_log_o0u10_bc <- filter(long.mts.pool.data.stan, bc_conc > 0, bc_conc < 10000, variable %in% filter(mts.pool.log.o0.bc.uni.reg, P.Value < 0.05)$variable) %>% 
   nest(-variable) %>% 
   mutate(fit = map(data, ~ lm(log(bc_conc + 1) ~ value, data = .)), resids = map(fit, residuals)) %>%
   unnest(resids) %>%
   ggplot(data = ., aes(x = resids)) + 
   geom_histogram() +  
   facet_wrap(~ variable, scales = "free") +
-  ggtitle("Montreal and Toronto Summer Pooled Residual Histograms for log Uni Regs p < 0.05 (BC = 0 removed)")
-#saved as resid_hist_pu5_mts_pool_u10k_bc.png
+  ggtitle("Montreal and Toronto Summer Pooled Residual Histograms for log Uni Regs p < 0.05 (BC = 0 and BC > 10,000 removed)")
 
+
+setdiff(filter(mts.pool.log.o0u10.bc.uni.reg, P.Value < 0.05)$variable, filter(mts.pool.u10k.bc.uni.reg, P.Value < 0.05)$variable)
+setdiff(filter(mts.pool.u10k.bc.uni.reg, P.Value < 0.05)$variable, filter(mts.pool.log.o0u10.bc.uni.reg, P.Value < 0.05)$variable)
 
 # Comparing All Regressions (with and without outliers)######
 #there are five groups of uni regressions:
@@ -3741,6 +3782,73 @@ summary(lm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ d_majrd + I(d
 #nope
 
 ######maybe check in the p > 0.05 for some non-linears?
+
+
+# Variable Selection MTL A #####
+# look at file m.a.bc.xy.fit.plot.u4k.pu5.png
+
+formattable(tbl.m.a.u4k.bc.uni)
+#look at file pu5_m_s_u4k_bc.png for the p < 0.05 graphs and the tbl.m.s.u4k.bc.uni too
+m.a.u4k.lin.variables <- c("build_1000m", "mjrd_500m", "bus_stop_300m", "traffic_750m", "tot_traffic_750m", "tot_Nox_750m", "d_NPRI_Nox", "d_airport", "d_railline", "d_shore")
+m.a.u4k.nlin.variables <- c("d_airport", "d_railline", "d_shore")
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ build_1000m + mjrd_500m + bus_stop_300m + traffic_750m + tot_traffic_750m + tot_Nox_750m + d_NPRI_Nox + I(d_airport^2) + I(d_railline^2) + I(d_shore^2)))
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ build_1000m + tot_Nox_750m + d_NPRI_Nox + I(d_airport^2) + I(d_railline^2) + I(d_shore^2)))
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + I(d_airport^2) + I(d_shore^2)))
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + I(d_shore^2)))
+
+
+#mjrd_500m looks like 2 outliers might be driving it, check without the outliers
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ mjrd_500m))
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000 & mjrd_500m < 2), bc_conc ~ mjrd_500m))
+#they are. Without them p > 0.05
+
+#bus_stop_300m looks like 2 outliers might be driving it, check without the outliers
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ bus_stop_300m))
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000 & bus_stop_300m < 2), bc_conc ~ bus_stop_300m))
+#they are. Without them p > 0.05
+
+#traffic_750m looks like 3 outliers might be driving it, check without the outliers
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ traffic_750m))
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000 & traffic_750m < 2), bc_conc ~ traffic_750m))
+#they are. Without them p > 0.05
+
+#tot_traffic_750m looks like 3 outliers might be driving it, check without the outliers
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ tot_traffic_750m))
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000 & tot_traffic_750m < 2), bc_conc ~ tot_traffic_750m))
+#they are. Without them p > 0.05
+
+#tot_Nox_750m looks like 3 outliers might be driving it, check without the outliers
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ tot_Nox_750m))
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000 & tot_Nox_750m < 2), bc_conc ~ tot_Nox_750m))
+#######They are NOT! Without them p < 0.05. Non-linear?
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ tot_Nox_750m))
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ I(tot_Nox_750m^2)))
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ tot_Nox_750m + I(tot_Nox_750m^2)))
+#nope
+
+#####checking possible non-linear and IV outlier influence while selecting vars
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ d_NPRI_Nox))
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ I(d_NPRI_Nox^2)))
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ d_NPRI_Nox + I(d_NPRI_Nox^2)))
+#no non-linear component
+
+#d_majrd might be non-linear
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ d_airport))
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ I(d_airport^2)))
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ d_airport + I(d_airport^2)))
+#shows up as non-linear, but is that a hump instead of a decay?
+
+
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ d_railline))
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ I(d_railline^2)))
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ d_railline + I(d_railline^2)))
+
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ d_shore))
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ I(d_shore^2)))
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ d_shore + I(d_shore^2)))
+
+
+
 
 
 # Predictor Counts ######

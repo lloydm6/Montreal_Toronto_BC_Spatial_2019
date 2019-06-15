@@ -20,3 +20,5 @@ Trying to make tables, but having trouble with Java R connection
 Made an RMD file to summarize the uni reg info
 
 Made Historgrams of all the residuals. Also made an RMD file to organize my thoughts on them. 
+
+Selected variables for MTL Annual

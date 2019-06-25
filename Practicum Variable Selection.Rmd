@@ -1,0 +1,625 @@
+---
+title: "Variable Selection"
+author: "Marshall"
+date: '2019-06-25'
+output: 
+  html_document:
+    toc: TRUE
+    number_sections: TRUE
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,          # don't show code
+  warning = FALSE,       # don't show warnings
+  message = FALSE,       # don't show messages (less serious warnings)
+  cache = FALSE         # set to TRUE to save results from last compilation
+                      )
+```
+
+```{r results='hide', fig.keep='none', include=FALSE}
+setwd("/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019")
+library(formattable)
+library(dplyr)
+library(DT) 
+
+all.multis.glance <- read.csv("MTL TO markdown/all.multis.glance.csv")[,-1]
+mark.sel.mtl.s.log.o0 <- read.csv("MTL TO markdown/sel.lin.var.m.s.log.o0.bc.uni.csv")[,-1]
+
+mark.sel.mtl.s.log.o0 <- read.csv("MTL TO markdown/sel.lin.var.m.s.log.o0.bc.uni.csv")[,-1]
+mark.sel.mtl.s.u4k <- read.csv("MTL TO markdown/sel.lin.var.m.s.u4k.bc.uni.csv")[,-1]
+mark.sel.mtl.s.log <- read.csv("MTL TO markdown/sel.lin.var.m.s.log.bc.uni.csv")[,-1]
+mark.sel.mtl.a.u4k <- read.csv("MTL TO markdown/sel.lin.var.m.a.u4k.bc.uni.csv")[,-1]
+mark.sel.mtl.a.log <- read.csv("MTL TO markdown/sel.lin.var.m.a.log.bc.uni.csv")[,-1]
+mark.sel.mtl.a.log.u4k <- read.csv( "MTL TO markdown/sel.lin.var.m.a.log.u4k.bc.uni.csv")[,-1]
+mark.sel.to.u10k <- read.csv("MTL TO markdown/sel.lin.var.to.u10k.bc.uni.csv")[,-1]
+mark.sel.to.log.o0 <- read.csv("MTL TO markdown/sel.lin.var.to.log.o0.bc.uni.csv")[,-1]
+mark.sel.to.log.o100u10k <- read.csv("MTL TO markdown/sel.lin.var.to.log.o100u10k.bc.uni.csv")[,-1]
+mark.sel.mts.pool.u10k <- read.csv("MTL TO markdown/sel.lin.var.mts.pool.u10k.bc.uni.csv")[,-1]
+mark.sel.mts.pool.o0u13k <- read.csv("MTL TO markdown/sel.lin.var.mts.pool.o0u13k.bc.uni.csv")[,-1]
+
+```
+
+# Introduction
+
+Each section is for a data set. The section starts with a quick blurb on the models. The subsections are different models used for that particular data set (eg: linear vs log-linear or with outliers removed). Each subsection has a table listing the variables selected and a quick blurb about the model to the right of the table. Under the table are the residual histograms for each of the selected variables. The final section has tables that shows which variables were selected for which model and tallies how often various variables were selected. 
+
+***
+# Montreal Summer
+
+The linear model has the highest $R^2$, has decent looking residuals, includes the BC = 0 data, but doesn't include the BC > 4,000 data. At this point, probably the best MTL Summer model overall and the best for predicting low levels of BC. That being said, it has a very low $R^2$.
+
+The log-linear model has a lower $R^2$, has decent looking residuals, includes the BC > 4,000 data, but doesn't include the BC = 0 data. At this point, probably the best MTL Summer model for predicting high levels of BC, though with a very low $R^2$.
+<br><br><br>
+
+### Linear, BC < 4,000
+
+<div class = "row">
+  
+<div class = "col-md-5">
+
+```{r}
+
+mark.sel.mtl.s.u4k <- read.csv("MTL TO markdown/sel.lin.var.m.s.u4k.bc.uni.csv")[,-1]
+
+formattable(mark.sel.mtl.s.u4k)
+
+```
+
+</div>
+
+<div class = "col-md-2">
+
+</div>
+<div class = "col-md-5">
+
+
+```{r}
+
+r2.m.s <- round(all.multis.glance[1,2], 3)
+m.s.log.o0.list <- (mark.sel.mtl.s.log.o0$IV)
+m.s.u4k.list <- (mark.sel.mtl.s.u4k$IV)
+```
+The $R^2$ for these IVs in a single linear multi-variable regression is: **`r r2.m.s`**, which isn't great, but it is the higest of the 3 Montreal Summer models attempted. The residuals plots below don't look too bad. On the left of the histograms you can see BC = 0 values with large -ve residuals, so these uni regs are not great at predicting very low BC values. Also, keep in mind 5 observations of BC > 4,000 were left out. With them in, there are hardly any uni regressions with p < 0.05. 
+
+The log-linear Montreal Summer BC > 0 model has the following IVs (some buffers different):
+
+`r m.s.log.o0.list`
+
+</div>
+</div>
+
+
+![Residuals of Selected Variables Montreal Summer BC < 4,000](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/MTL TO markdown/Selected Var Residual Histograms/selected_resid_hist_m_s_u4k_bc.png)
+
+***
+<br><br><br>
+
+### Log-linear, all data 
+
+
+<div class = "row">
+  
+<div class = "col-md-5">
+```{r}
+
+mark.sel.mtl.s.log <- read.csv("MTL TO markdown/sel.lin.var.m.s.log.bc.uni.csv")[,-1]
+formattable(mark.sel.mtl.s.log)
+```
+</div>
+
+<div class = "col-md-2">
+
+</div>
+<div class = "col-md-5">
+This is with all data. Not great because we only get 1 variable (I think there were about 9 that were p < 0.05, but most were unusable or a different buffer of bus_stop). Notice far left of the residual histogram below. The BC = 0 values don't work very well with the log transformation (the transformation was log (BC = 1)). I dropped BC = 0 for all subseqent log models (I looked at them and they looked the same as this histogram). 
+
+</div>
+</div>
+
+
+![Residuals of Selected Variables Montreal Summer log](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/MTL TO markdown/Selected Var Residual Histograms/selected_resid_hist_m_s_log_bc.png){width=300px}
+
+***
+<br><br><br>
+
+
+### Log-linear, BC > 0
+
+
+<div class = "row">
+  
+<div class = "col-md-5">
+```{r}
+
+formattable(mark.sel.mtl.s.log.o0)
+
+```
+</div>
+
+<div class = "col-md-2">
+
+</div>
+<div class = "col-md-5">
+
+```{r}
+r2.m.s.log.o0 <- round(all.multis.glance[3,2], 3)
+```
+
+The $R^2$ for these IVs in a single linear multi-variable regression is **`r r2.m.s.log.o0`**. Not a great $R^2$ value, though this model includes the 5 BC observations over 4,000. The 6 BC = 0 have been excluded. The residual histograms look pretty good, though I don't know if they are a marked improvement over the residual histograms of the linear model without log transformation. 
+
+</div>
+</div>
+
+![Residuals of Selected Variables Montreal Summer log BC > 0](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/MTL TO markdown/Selected Var Residual Histograms/selected_resid_hist_m_s_log_o0_bc.png){width=750px}
+
+***
+<br><br><br>
+
+
+# Montreal Annual
+
+The linear model has the highest $R^2$, has decent looking residuals, but doesn't include the BC > 4,000 data. At this point, probably the best MTL Annual model overall.
+
+The log-linear model has nearly the same $R^2$, but doesn't seem to improve the residual plots. It also doesn't include the BC > 4,000 data.
+<br><br><br>
+
+
+### Linear, BC < 4,000
+
+
+<div class = "row">
+  
+<div class = "col-md-5">
+```{r}
+
+mark.sel.mtl.a.u4k <- read.csv("MTL TO markdown/sel.lin.var.m.a.u4k.bc.uni.csv")[,-1]
+mark.sel.mtl.a.log <- read.csv("MTL TO markdown/sel.lin.var.m.a.log.bc.uni.csv")[,-1]
+mark.sel.mtl.a.log.u4k <- read.csv( "MTL TO markdown/sel.lin.var.m.a.log.u4k.bc.uni.csv")[,-1]
+
+formattable(mark.sel.mtl.a.u4k)
+```
+
+<br><br><br>
+
+</div>
+
+<div class = "col-md-2">
+
+</div>
+<div class = "col-md-5">
+
+```{r}
+
+r2.m.a <- round(all.multis.glance[4,2], 3)
+m.a.log.u4k.list <- (mark.sel.mtl.a.log.u4k$IV)
+```
+The $R^2$ for these IVs in a single linear multi-variable regression is: **`r r2.m.a`**, which is the higest of the 3 Montreal Annuals models attempted. The residuals plots below don't look too bad, but you can see a bit of a right tail in some of them. There are no BC = 0 values, so the low end looks better than the Montreal Summer models because the Annual is not trying to predict extrememly low values. For the same reasons as MTL Summer linear, BC > 4,000 observations were left out (3 this time).
+
+The log-linear Montreal Annual BC < 4,000 model has the following IVs (some buffers different):
+
+`r m.a.log.u4k.list`
+
+
+The linear Montreal Summer BC < 4,000 model has the following IVs (some buffers different):
+
+`r m.s.u4k.list`
+
+<br><br>
+</div>
+</div>
+
+![Residuals of Selected Variables Montreal Annual BC < 4,000](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/MTL TO markdown/Selected Var Residual Histograms/selected_resid_hist_m_a_u4k_bc.png)
+
+
+***
+<br><br><br>
+
+
+### Log-linear, all data 
+
+
+<div class = "row">
+  
+<div class = "col-md-5">
+```{r}
+
+
+formattable(mark.sel.mtl.a.log)
+```
+*fits better as non-linear ($x^2$), linear results shown
+
+
+<br><br>
+</div>
+
+<div class = "col-md-2">
+
+</div>
+<div class = "col-md-5">
+
+```{r}
+
+r2.m.a.log <- round(all.multis.glance[5,2], 3)
+
+```
+The $R^2$ for these IVs in a single linear multi-variable regression is: **`r r2.m.a.log`**, which is the lowest of the 3 Montreal Annuals models attempted. The residuals don't look too bad, but only 2 variables could be selected (there are three histograms because d.airport is repeated as non-linear). Unlike Montreal Summer, there are no BC = 0 observations throwing off the regressions. Below I try cutting out the high values to see if it helps. 
+
+
+</div>
+</div>
+
+
+![Residuals of Selected Variables Montreal Annual log](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/MTL TO markdown/Selected Var Residual Histograms/selected_resid_hist_m_a_log_bc.png){width=500px}
+![Residuals of Selected Non-Linear Variables Montreal Annual log](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/MTL TO markdown/Selected Var Residual Histograms/selected_nlin_resid_hist_m_a_log_bc.png){width=250px}
+
+***
+<br><br><br>
+
+
+### Log-linear, BC < 4,000
+
+
+<div class = "row">
+  
+<div class = "col-md-5">
+```{r}
+
+formattable(mark.sel.mtl.a.log.u4k)
+
+```
+*linear results shown, but these fit better as non-linear, $x^2$
+
+
+
+</div>
+
+<div class = "col-md-2">
+
+</div>
+<div class = "col-md-5">
+
+
+```{r}
+
+r2.m.a.log.u4k <- round(all.multis.glance[6,2], 3)
+
+```
+The $R^2$ for these IVs in a single linear multi-variable regression is: **`r r2.m.a.log.u4k`**, which is a little below the non-transformed linear model. The residuals don't look too bad, but the peaks are a bit right of centre. Like the non-transformed linear, this does not include the 3 observations of BC > 4,000. 
+
+
+</div>
+</div>
+
+
+![Residuals of Selected Variables Montreal Annual log BC < 4,000](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/MTL TO markdown/Selected Var Residual Histograms/selected_resid_hist_m_a_log_u4k_bc.png){width=750px}
+![Residuals of Selected Non-Linear Variables Montreal Annual log BC < 4,000](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/MTL TO markdown/Selected Var Residual Histograms/selected_nlin_resid_hist_m_a_log_u4k_bc.png){width=500px}
+
+
+***
+<br><br><br>
+
+
+
+# Toronto Summer
+
+The linear model has the highest $R^2$, has decent looking residuals, includes the BC = 0 data, but doesn't include the BC > 10,000 data. This model may take more liberties with the independent residuals assumption, but it has a higher $R^2$.
+
+The log-linear model has a lower $R^2$, but it's still a good value. The log-linear model probably has better looking residuals, though the model doesn't inlcude two observations of BC < 100 (as well as that one BC ~ 40k). This model probably does a better job of respecting independent residuals assumption, but it has a lower, though still good, $R^2$.
+
+
+<br><br><br>
+
+
+
+### Linear, BC < 10,000
+
+
+<div class = "row">
+  
+<div class = "col-md-5">
+```{r}
+
+mark.sel.to.u10k <- read.csv("MTL TO markdown/sel.lin.var.to.u10k.bc.uni.csv")[,-1]
+mark.sel.to.log.o0 <- read.csv("MTL TO markdown/sel.lin.var.to.log.o0.bc.uni.csv")[,-1]
+mark.sel.to.log.o100u10k <- read.csv("MTL TO markdown/sel.lin.var.to.log.o100u10k.bc.uni.csv")[,-1]
+formattable(mark.sel.to.u10k)
+```
+**fits better as non-linear ($x + x^2$), but linear results shown
+
+<br><br>
+
+
+</div>
+
+<div class = "col-md-2">
+
+</div>
+<div class = "col-md-5">
+
+
+```{r}
+
+r2.t.s <- round(all.multis.glance[7,2], 3)
+t.s.log.o0.list <- (mark.sel.to.log.o0$IV)
+t.s.o100u10k.list <- (mark.sel.to.log.o100u10k$IV)
+```
+The $R^2$ for these IVs in a single linear multi-variable regression is: **`r r2.t.s`**, which is the highest of the 3 Toronto Summer models attempted. The residual plots have a bit of a right tail and many of the peaks are a bit left of center. A single observation of BC ~ 40,000 was excluded. 
+
+The log-linear Toronto Summer BC > 0 model has the following IVs (some buffers different):
+
+`r t.s.log.o0.list`
+
+The log-linear Toronto Summer 100 < BC < 10,000 model has the following IVs (some buffers different):
+
+`r t.s.o100u10k.list`
+
+
+</div>
+</div>
+
+
+
+![Residuals of Selected Variables Toronto Summer BC < 10,000](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/MTL TO markdown/Selected Var Residual Histograms/selected_resid_hist_t_s_u10k_bc.png)
+
+![Residuals of Selected Non-Linear Variables Toronto Summer BC < 10,000](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/MTL TO markdown/Selected Var Residual Histograms/selected_nlin_resid_hist_t_s_u10k_bc.png){width=250px}
+
+
+***
+<br><br><br>
+
+
+
+### Log-Linear BC > 0 
+
+
+<div class = "row">
+  
+<div class = "col-md-5">
+
+```{r}
+
+
+formattable(mark.sel.to.log.o0)
+```
+
+</div>
+
+<div class = "col-md-2">
+
+</div>
+<div class = "col-md-5">
+
+
+```{r}
+
+r2.t.s.log.o0 <- round(all.multis.glance[8,2], 3)
+
+```
+The $R^2$ for these IVs in a single linear multi-variable regression is: **`r r2.t.s.log.o0`**, which is the lowest of the 3 Toronto Summer models attempted. The single BC = 0 observation was excluded based on the experience with Monteal Summer, but there is still the BC = 52 value that is poorly fit (next lowest BC value is ~600). This model includes the BC = 40,000 observation (next highest is ~6,000). Apart from the outlier on either side, the residual histograms look pretty good. 
+
+
+
+</div>
+</div>
+
+
+![Residuals of Selected Variables Toronto Summer log BC > 0](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/MTL TO markdown/Selected Var Residual Histograms/selected_resid_hist_t_s_log_o0_bc.png)
+
+***
+<br><br><br>
+
+
+### Toronto Summer Log-Linear 100 < BC < 10,000
+
+
+<div class = "row">
+  
+<div class = "col-md-5">
+```{r}
+
+
+formattable(mark.sel.to.log.o100u10k)
+
+```
+
+</div>
+
+<div class = "col-md-2">
+
+</div>
+<div class = "col-md-5">
+
+```{r}
+
+r2.t.s.o100u10k <- round(all.multis.glance[9,2], 3)
+```
+The $R^2$ for these IVs in a single linear multi-variable regression is: **`r r2.t.s.o100u10k`**, which is in the middle of the 3 Toronto Summer models attempted. Some of the residual plots look better than others (might be partially due to binning), but none look too awful. A single observation of BC ~ 40,000 and two observations BC < 100 were excluded. 
+
+
+</div>
+</div>
+
+
+![Residuals of Selected Variables Toronto Summer log 100 < BC < 10,000](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/MTL TO markdown/Selected Var Residual Histograms/selected_resid_hist_t_s_log_o100u10k_bc.png)
+
+
+***
+<br><br><br>
+
+
+
+# Montreal Summer and Toronto Summer Pooled
+
+The linear model has the lower $R^2$ and skewed residuals. It includes the BC = 0 data, but doesn't include the BC > 10,000 data.
+
+The log-linear model has the higher $R^2$ and better looking residuals, though the model doesn't inlcude 7 observations of BC = 100 (as well as that one BC ~ 40k). This looks to be the better of the two models for pooled data, though the $R^2$ is a little low.
+
+
+<br><br><br>
+
+
+
+### Linear, BC < 10,000
+
+
+<div class = "row">
+  
+<div class = "col-md-5">
+```{r}
+
+mark.sel.mts.pool.u10k <- read.csv("MTL TO markdown/sel.lin.var.mts.pool.u10k.bc.uni.csv")[,-1]
+mark.sel.mts.pool.o0u13k <- read.csv("MTL TO markdown/sel.lin.var.mts.pool.o0u13k.bc.uni.csv")[,-1]
+formattable(mark.sel.mts.pool.u10k)
+```
+
+</div>
+
+<div class = "col-md-2">
+
+</div>
+<div class = "col-md-5">
+
+
+
+```{r}
+
+r2.mts.u10k <- round(all.multis.glance[10,2], 3)
+mts.log.o0u13k.list <- (mark.sel.mts.pool.o0u13k$IV)
+
+```
+The $R^2$ for these IVs in a single linear multi-variable regression is: **`r r2.mts.u10k`**, which is the lowest of the 2 Montreal+Toronto Summer Pooled models attempted. The peaks of the residuals are left of center and there is a clear right tail. Two BC observations of ~12,000 and ~40,000 were excluded (next highest values are ~8,000). The BC = 12,000 value was included at first, but I found that it drove many of the regressions. 
+
+The log-linear Montreal+Toronto Summer Pooled 0 < BC < 13,000 model has the following IVs (some buffers different):
+
+`r mts.log.o0u13k.list`
+
+
+
+ 
+</div>
+</div>
+
+
+![Residuals of Selected Variables Montreal and Toronto Summer BC < 10,000](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/MTL TO markdown/Selected Var Residual Histograms/selected_resid_hist_mts_pool_u10k_bc.png)
+
+
+
+
+### Log-Linear, 0 < BC < 13,000
+
+
+<div class = "row">
+  
+<div class = "col-md-5">
+```{r}
+
+
+formattable(mark.sel.mts.pool.o0u13k)
+```
+**linear results shown, but fits better as non-linear, $x + x^2$
+<br><br>
+
+</div>
+
+<div class = "col-md-2">
+
+</div>
+<div class = "col-md-5">
+
+The $R^2$ for these IVs in a single linear multi-variable regression is:
+```{r}
+
+r2.mts.o0u13k <- round(all.multis.glance[11,2], 3)
+
+
+```
+The $R^2$ for these IVs in a single linear multi-variable regression is: **`r r2.mts.o0u13k`**, which is the highest of the 2 Montreal+Toronto Summer Pooled models attempted. The peaks of the residuals have centered and the right tail is more or less gone. One BC observations of ~40,000 and seven BC = 0 were excluded. The BC = 12,000 value was included because the log transformation softens the impact of a large outlier. As opposed to the Toronto summer log models where BC < 100 were excluded, here only BC = 0 were excluded because the Montreal Summer data had 4 BC observation below 500. Low end data is a little less scarce when Montreal and Toronto are pooled. Keeping BC = 0 still results in very poor prediction so it was excluded.
+
+</div>
+</div>
+
+
+![Residuals of Selected Variables Montreal and Toronto Summer log 0 < BC < 10,000](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/MTL TO markdown/Selected Var Residual Histograms/selected_resid_hist_mts_pool_log_o0u13k_bc.png)
+
+![Residuals of Selected Non-Linear Variables Montreal and Toronto Summer log 0 < BC < 10,000](/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spatial_2019/MTL TO markdown/Selected Var Residual Histograms/selected_nlin_resid_hist_mts_pool_log_o0u13k_bc.png){width=500px}
+
+
+
+
+```{r}
+
+var.master <- Reduce(union, list(mark.sel.mtl.s.log.o0$IV, mark.sel.mtl.s.u4k$IV, mark.sel.mtl.a.u4k$IV, mark.sel.mtl.a.log$IV, mark.sel.mtl.a.log.u4k$IV, mark.sel.to.u10k$IV, mark.sel.to.log.o0$IV, mark.sel.to.log.o100u10k$IV, mark.sel.mts.pool.u10k$IV, mark.sel.mts.pool.o0u13k$IV))
+
+df.var.sel <- data.frame(IV = var.master,
+m.s.u4k = ifelse(var.master %in% as.character(mark.sel.mtl.s.u4k$IV), 1, 0),
+m.s.log = ifelse(var.master %in% as.character(mark.sel.mtl.s.log$IV), 1, 0),
+m.s.log.o0 = ifelse(var.master %in% as.character(mark.sel.mtl.s.log.o0$IV), 1, 0),
+m.a.u4k = ifelse(var.master %in% as.character(mark.sel.mtl.a.u4k$IV), 1, 0),
+m.a.log.u4k = ifelse(var.master %in% as.character(mark.sel.mtl.a.log.u4k$IV), 1, 0),
+t.u10k = ifelse(var.master %in% as.character(mark.sel.to.u10k$IV), 1, 0),
+t.log.o0 = ifelse(var.master %in% as.character(mark.sel.to.log.o0$IV), 1, 0),
+t.log.o100u10k =ifelse(var.master %in% as.character(mark.sel.to.log.o100u10k$IV), 1, 0),
+m.t.u10k = ifelse(var.master %in% as.character(mark.sel.mts.pool.u10k$IV), 1, 0),
+m.t.log.o0u13k = ifelse(var.master %in% as.character(mark.sel.mts.pool.o0u13k$IV), 1, 0)
+)
+
+df.var.sel.sums  <- mutate(df.var.sel, Prop.Models.With.IV = rowSums(df.var.sel[,-1])/ncol(df.var.sel[,-1]))
+df.var.sel.best <- select(df.var.sel, IV, m.s.u4k, m.a.u4k, t.log.o100u10k, m.t.log.o0u13k)
+df.var.sel.best.sums <- mutate(df.var.sel.best, Prop.Models.With.IV = rowSums(df.var.sel.best[,-1])/ncol(df.var.sel.best[,-1]))
+
+```
+
+#Summary of Selected Variables
+
+### Of my favourite models so far
+
+Note: buffer sizes may be different. 
+
+m.s.u4k = Montreal Summer data, linear model, BC < 4,000. I like this because it has the highest $R^2$ (`r r2.m.s`) and decent looking residuals. 
+
+m.a.u4k = Montreal Annual data, linear model, BC < 4,000. I like this because it has the highest $R^2$ (`r r2.m.a`)and decent looking residuals. 
+
+t.log.o100u10k = Toronto Summer data, log-linear model, 100 < BC < 10,000. I like this because $R^2$ is high (even though it's 2nd highest; `r r2.t.s.o100u10k`) and good looking residuals.
+
+m.t.log.o0u13k = Pooled Montreal + Toronto Summer data, log-linear model, 100 < BC < 10,000. I like this because it ahs the highest $R^2$ (`r r2.mts.o0u13k`) and good looking residuals.
+
+Prop.Models.With.IV = Proportion of the models in the table that have a particular variable. 
+
+```{r}
+
+
+
+formattable(arrange(df.var.sel.best.sums, IV))
+```
+
+### Of all models so far
+
+Note: buffer sizes may be different.
+
+```{r}
+formattable(arrange(df.var.sel.sums, IV))
+```
+
+
+
+### Notes on Variable Selection Method: 
+
+-If the variable had p < 0.05 in a uni reg and this association wasn't being driven by a couple of large values (filter out outliers and re-rerun the reg).
+
+-Select the variable buffer distance with highest $R^2$. If a buffer distances had a high $R^2$ but was driven by outliers, then a buffer distance with a smaller $R^2$ might be selected (assuming it wasn't also driven by an outlier).
+
+-Investigate non-linearity, especially for "distance to" variables.
+
+-Investigate non-linearity for all "distance to" variables even if they had a p > 0.05 in the linear uni reg. 
+
+-Some variables could have used a non-linear term to fit to outliers, but these were not selected as non-linear variables. 
+
+
+
+
+
+
+

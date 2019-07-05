@@ -24,6 +24,7 @@ setwd("/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spat
 library(formattable)
 library(dplyr)
 library(DT) 
+library(stargazer)
 
 all.multis.glance <- read.csv("MTL TO markdown/all.multis.glance.csv")[,-1]
 mark.sel.mtl.s.log.o0 <- read.csv("MTL TO markdown/sel.lin.var.m.s.log.o0.bc.uni.csv")[,-1]
@@ -40,9 +41,75 @@ mark.sel.to.log.o100u10k <- read.csv("MTL TO markdown/sel.lin.var.to.log.o100u10
 mark.sel.mts.pool.u10k <- read.csv("MTL TO markdown/sel.lin.var.mts.pool.u10k.bc.uni.csv")[,-1]
 mark.sel.mts.pool.o0u13k <- read.csv("MTL TO markdown/sel.lin.var.mts.pool.o0u13k.bc.uni.csv")[,-1]
 
+mark.m.a.data.stan <- read.csv("Cleaned Data csv/montreal_annual_standardized_data.csv")
+mark.t.s.data.stan <- read.csv("Cleaned Data csv/toronto_standardized_data.csv")
+mark.mts.pool.data.stan <- read.csv("Cleaned Data csv/mtl_to_pooled_summer_standardized_data.csv")
+```
+# Introduction 8 July 
+
+
+# Montreal Annual
+
+Candidate Variables with Spearman Correlations < 0.7
+```{r}
+formattable(dplyr::filter(mark.sel.mtl.a.u4k, IV != "mjrd" & IV != "traffic"))
+
+formattable(as.data.frame(round(cor(dplyr::select(dplyr::filter(mark.m.a.data.stan, bc_conc < 4000), build_1000m, mjrd_1000m, bus_stop_200m, traffic_1000m, 
+                  tot_Nox_750m, d_NPRI_Nox, d_railline, d_airport, d_shore), method = "spearman"), 3))) 
 ```
 
-# Introduction
+```{r results = 'asis'}
+stargazer(lm(data = dplyr::filter(mark.m.a.data.stan, bc_conc < 4000), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + I(d_airport^2) + d_railline + I(d_shore^2) + 
+             tot_Nox_750m:I(d_shore^2) + d_railline:I(d_shore^2)), ci = TRUE, ci.level = 0.95, type = "html")
+```
+
+# Tonronto Summer
+
+Candidate Variables with Spearman Correlations < 0.7
+```{r}
+
+
+formattable(dplyr::filter(mark.sel.to.u10k, IV != "mjrd" & IV != "road" & IV != "d_majrd" & IV != "bus" & IV != "tot_traffic" & IV != "tot_Nox"))
+
+formattable(as.data.frame(round(cor(dplyr::select(dplyr::filter(mark.t.s.data.stan, bc_conc < 10000), build_200m, com_750m, resid_100m, ind_1000m, open_50m, 
+                  mjrd_100m, road_50m, d_highway, d_majrd, bus_50m, inter_50m, traffic_100m, tot_traffic_100m, tot_Nox_100m,
+                  Nox_50m, d_NPRI_PM, d_airport, rail_1000m), method = "spearman"), 3))) 
+
+mark.lm.to.u10k.9vars.ex <- lm(data = dplyr::filter(mark.t.s.data.stan, bc_conc < 10000), bc_conc ~ com_750m + Nox_50m + build_200m:resid_100m +
+                                 com_750m:resid_100m + com_750m:ind_1000m + com_750m:d_airport + resid_100m:open_50m + ind_1000m:d_highway +
+                                 d_highway:Nox_50m)
+mark.lm.to.u10k.9vars.seqrep <- lm(data = dplyr::filter(mark.t.s.data.stan, bc_conc < 10000), bc_conc ~ Nox_50m + I(resid_100m^2) + build_200m:ind_1000m +
+                                 com_750m:resid_100m + com_750m:ind_1000m + com_750m:d_airport + resid_100m:ind_1000m + ind_1000m:Nox_50m +
+                                 d_highway:Nox_50m)
+
+mark.lm.to.u10k.11vars.seqrep <- lm(data = dplyr::filter(mark.t.s.data.stan, bc_conc < 10000), bc_conc ~ open_50m + Nox_50m + I(resid_100m^2) +
+                                     build_200m:ind_1000m + com_750m:resid_100m + com_750m:ind_1000m + resid_100m:ind_1000m + ind_1000m:Nox_50m +
+                                     ind_1000m:d_airport + d_highway:Nox_50m + Nox_50m:rail_1000m)
+summary(mark.lm.to.u10k.11vars.seqrep)
+```
+
+
+```{r results = 'asis'}
+
+stargazer(mark.lm.to.u10k.9vars.ex, mark.lm.to.u10k.9vars.seqrep, mark.lm.to.u10k.11vars.seqrep, ci = FALSE, ci.level = 0.95, type = "html")
+
+```
+
+
+# Montreal Summer + Toronto Summer Pooled
+
+Candidate Variables with Spearman Correlations < 0.7
+```{r}
+
+```
+
+
+```{r results = 'asis'}
+
+```
+
+
+# Introduction 2 July 
 
 Each section is for a data set. The section starts with a quick blurb on the models. The subsections are different models used for that particular data set (eg: linear vs log-linear or with outliers removed). Each subsection has a table listing the variables selected and a quick blurb about the model to the right of the table. Under the table are the residual histograms for each of the selected variables. The final section has tables that shows which variables were selected for which model and tallies how often various variables were selected. 
 
@@ -193,7 +260,7 @@ formattable(mark.sel.mtl.a.u4k)
 
 ```{r}
 
-r2.m.a <- round(all.multis.glance[4,2], 3)
+r2.m.a <- round(all.multis.glance[5,2], 3)
 m.a.log.u4k.list <- (mark.sel.mtl.a.log.u4k$IV)
 ```
 The $R^2$ for these IVs in a single linear multi-variable regression is: **`r r2.m.a`**, which is the higest of the 3 Montreal Annuals models attempted. The residuals plots below don't look too bad, but you can see a bit of a right tail in some of them. There are no BC = 0 values, so the low end looks better than the Montreal Summer models because the Annual is not trying to predict extrememly low values. For the same reasons as MTL Summer linear, BC > 4,000 observations were left out (3 this time).
@@ -242,7 +309,7 @@ formattable(mark.sel.mtl.a.log)
 
 ```{r}
 
-r2.m.a.log <- round(all.multis.glance[5,2], 3)
+r2.m.a.log <- round(all.multis.glance[6,2], 3)
 
 ```
 The $R^2$ for these IVs in a single linear multi-variable regression is: **`r r2.m.a.log`**, which is the lowest of the 3 Montreal Annuals models attempted. The residuals don't look too bad, but only 2 variables could be selected (there are three histograms because d.airport is repeated as non-linear). Unlike Montreal Summer, there are no BC = 0 observations throwing off the regressions. Below I try cutting out the high values to see if it helps. 
@@ -284,7 +351,7 @@ formattable(mark.sel.mtl.a.log.u4k)
 
 ```{r}
 
-r2.m.a.log.u4k <- round(all.multis.glance[6,2], 3)
+r2.m.a.log.u4k <- round(all.multis.glance[7,2], 3)
 
 ```
 The $R^2$ for these IVs in a single linear multi-variable regression is: **`r r2.m.a.log.u4k`**, which is a little below the non-transformed linear model. The residuals don't look too bad, but the peaks are a bit right of centre. Like the non-transformed linear, this does not include the 3 observations of BC > 4,000. 
@@ -342,7 +409,7 @@ formattable(mark.sel.to.u10k)
 
 ```{r}
 
-r2.t.s <- round(all.multis.glance[7,2], 3)
+r2.t.s <- round(all.multis.glance[8,2], 3)
 t.s.log.o0.list <- (mark.sel.to.log.o0$IV)
 t.s.o100u10k.list <- (mark.sel.to.log.o100u10k$IV)
 ```
@@ -395,7 +462,7 @@ formattable(mark.sel.to.log.o0)
 
 ```{r}
 
-r2.t.s.log.o0 <- round(all.multis.glance[8,2], 3)
+r2.t.s.log.o0 <- round(all.multis.glance[9,2], 3)
 
 ```
 The $R^2$ for these IVs in a single linear multi-variable regression is: **`r r2.t.s.log.o0`**, which is the lowest of the 3 Toronto Summer models attempted. The single BC = 0 observation was excluded based on the experience with Monteal Summer, but there is still the BC = 52 value that is poorly fit (next lowest BC value is ~600). This model includes the BC = 40,000 observation (next highest is ~6,000). Apart from the outlier on either side, the residual histograms look pretty good. 
@@ -434,7 +501,7 @@ formattable(mark.sel.to.log.o100u10k)
 
 ```{r}
 
-r2.t.s.o100u10k <- round(all.multis.glance[9,2], 3)
+r2.t.s.o100u10k <- round(all.multis.glance[10,2], 3)
 ```
 The $R^2$ for these IVs in a single linear multi-variable regression is: **`r r2.t.s.o100u10k`**, which is in the middle of the 3 Toronto Summer models attempted. Some of the residual plots look better than others (might be partially due to binning), but none look too awful. A single observation of BC ~ 40,000 and two observations BC < 100 were excluded. 
 
@@ -486,7 +553,7 @@ formattable(mark.sel.mts.pool.u10k)
 
 ```{r}
 
-r2.mts.u10k <- round(all.multis.glance[10,2], 3)
+r2.mts.u10k <- round(all.multis.glance[11,2], 3)
 mts.log.o0u13k.list <- (mark.sel.mts.pool.o0u13k$IV)
 
 ```
@@ -532,7 +599,7 @@ formattable(mark.sel.mts.pool.o0u13k)
 The $R^2$ for these IVs in a single linear multi-variable regression is:
 ```{r}
 
-r2.mts.o0u13k <- round(all.multis.glance[11,2], 3)
+r2.mts.o0u13k <- round(all.multis.glance[12,2], 3)
 
 
 ```
@@ -567,7 +634,9 @@ m.t.log.o0u13k = ifelse(var.master %in% as.character(mark.sel.mts.pool.o0u13k$IV
 )
 
 df.var.sel.sums  <- mutate(df.var.sel, Prop.Models.With.IV = rowSums(df.var.sel[,-1])/ncol(df.var.sel[,-1]))
-df.var.sel.best <- select(df.var.sel, IV, m.s.u4k, m.a.u4k, t.log.o100u10k, m.t.log.o0u13k)
+#df.var.sel.best <- select_(df.var.sel, IV, m.s.u4k, m.a.u4k, t.log.o100u10k, m.t.log.o0u13k)
+#MASS highjacked select() and I don't know how to get it back.
+df.var.sel.best <- df.var.sel[, c(1, 2, 5, 9, 11)]
 df.var.sel.best.sums <- mutate(df.var.sel.best, Prop.Models.With.IV = rowSums(df.var.sel.best[,-1])/ncol(df.var.sel.best[,-1]))
 
 ```
@@ -590,9 +659,40 @@ Prop.Models.With.IV = Proportion of the models in the table that have a particul
 
 ```{r}
 
+#kept all the column formatting stuff, it just ignores for the variables filtered out. 
+formattable(arrange(df.var.sel.best.sums, IV), list(
+    m.s.u4k	 = formatter("span",
+      style = x ~ style(color = ifelse(x, "green", "gray")),
+      x ~ icontext(ifelse(x, "ok", "remove"), ifelse(x, "Yes", "No"))),
+    m.s.log	 = formatter("span",
+      style = x ~ style(color = ifelse(x, "green", "gray")),
+      x ~ icontext(ifelse(x, "ok", "remove"), ifelse(x, "Yes", "No"))),
+    m.s.log.o0	 = formatter("span",
+      style = x ~ style(color = ifelse(x, "green", "gray")),
+      x ~ icontext(ifelse(x, "ok", "remove"), ifelse(x, "Yes", "No"))),
+    m.a.u4k	 = formatter("span",
+      style = x ~ style(color = ifelse(x, "green", "gray")),
+      x ~ icontext(ifelse(x, "ok", "remove"), ifelse(x, "Yes", "No"))),
+    m.a.log.u4k	 = formatter("span",
+      style = x ~ style(color = ifelse(x, "green", "gray")),
+      x ~ icontext(ifelse(x, "ok", "remove"), ifelse(x, "Yes", "No"))),
+    t.u10k	 = formatter("span",
+      style = x ~ style(color = ifelse(x, "green", "gray")),
+      x ~ icontext(ifelse(x, "ok", "remove"), ifelse(x, "Yes", "No"))),
+    t.log.o0	 = formatter("span",
+      style = x ~ style(color = ifelse(x, "green", "gray")),
+      x ~ icontext(ifelse(x, "ok", "remove"), ifelse(x, "Yes", "No"))),
+    t.log.o100u10k	 = formatter("span",
+      style = x ~ style(color = ifelse(x, "green", "gray")),
+      x ~ icontext(ifelse(x, "ok", "remove"), ifelse(x, "Yes", "No"))),
+    m.t.u10k	 = formatter("span",
+      style = x ~ style(color = ifelse(x, "green", "gray")),
+      x ~ icontext(ifelse(x, "ok", "remove"), ifelse(x, "Yes", "No"))),
+    m.t.log.o0u13k	 = formatter("span",
+      style = x ~ style(color = ifelse(x, "green", "gray")),
+      x ~ icontext(ifelse(x, "ok", "remove"), ifelse(x, "Yes", "No")))
+))
 
-
-formattable(arrange(df.var.sel.best.sums, IV))
 ```
 
 ### Of all models so far
@@ -600,7 +700,39 @@ formattable(arrange(df.var.sel.best.sums, IV))
 Note: buffer sizes may be different.
 
 ```{r}
-formattable(arrange(df.var.sel.sums, IV))
+formattable(arrange(df.var.sel.sums, IV), list(
+    m.s.u4k	 = formatter("span",
+      style = x ~ style(color = ifelse(x, "green", "gray")),
+      x ~ icontext(ifelse(x, "ok", "remove"), ifelse(x, "Yes", "No"))),
+    m.s.log	 = formatter("span",
+      style = x ~ style(color = ifelse(x, "green", "gray")),
+      x ~ icontext(ifelse(x, "ok", "remove"), ifelse(x, "Yes", "No"))),
+    m.s.log.o0	 = formatter("span",
+      style = x ~ style(color = ifelse(x, "green", "gray")),
+      x ~ icontext(ifelse(x, "ok", "remove"), ifelse(x, "Yes", "No"))),
+    m.a.u4k	 = formatter("span",
+      style = x ~ style(color = ifelse(x, "green", "gray")),
+      x ~ icontext(ifelse(x, "ok", "remove"), ifelse(x, "Yes", "No"))),
+    m.a.log.u4k	 = formatter("span",
+      style = x ~ style(color = ifelse(x, "green", "gray")),
+      x ~ icontext(ifelse(x, "ok", "remove"), ifelse(x, "Yes", "No"))),
+    t.u10k	 = formatter("span",
+      style = x ~ style(color = ifelse(x, "green", "gray")),
+      x ~ icontext(ifelse(x, "ok", "remove"), ifelse(x, "Yes", "No"))),
+    t.log.o0	 = formatter("span",
+      style = x ~ style(color = ifelse(x, "green", "gray")),
+      x ~ icontext(ifelse(x, "ok", "remove"), ifelse(x, "Yes", "No"))),
+    t.log.o100u10k	 = formatter("span",
+      style = x ~ style(color = ifelse(x, "green", "gray")),
+      x ~ icontext(ifelse(x, "ok", "remove"), ifelse(x, "Yes", "No"))),
+    m.t.u10k	 = formatter("span",
+      style = x ~ style(color = ifelse(x, "green", "gray")),
+      x ~ icontext(ifelse(x, "ok", "remove"), ifelse(x, "Yes", "No"))),
+    m.t.log.o0u13k	 = formatter("span",
+      style = x ~ style(color = ifelse(x, "green", "gray")),
+      x ~ icontext(ifelse(x, "ok", "remove"), ifelse(x, "Yes", "No")))
+))
+
 ```
 
 
@@ -618,6 +750,47 @@ formattable(arrange(df.var.sel.sums, IV))
 -Some variables could have used a non-linear term to fit to outliers, but these were not selected as non-linear variables. 
 
 
+```{r}
+
+```
+### Notes on interactions and Model Selection
+Looked at AIC and BIC for my favourite models. BIC errs on the side of cutting out variables and AIC errs on the side of putting them in. I looked all 2 way interactions of the selected models for each model. BIC did not select interaction terms for any of the models. AIC selected interaction terms for the following models:
+
+-Montreal Summer Linear u4k (mjrd_750m:d_NPRI_Nox + d_NPRI_Nox:tot_Nox_750m; brings R2 to 0.3447)
+  
+  ----side note: BIC selects: d_NPRI, tot_Nox, and bus, R2 = 0.2402
+
+
+
+-Toronto Summer Linear u10k (ind_1000m:resid_100m + com_750m:resid_100m + ind_1000m:com_750m + ind_1000m:d_majrd; brings R2 to 0.8)
+  
+  ----side note: BIC selects: Nox, com, ind, R2 = 0.628
+
+
+
+-Toronto Summer Log-Linear o100u10k (Nox_50m:d_majrd; brings R2 to 0.6419)
+  
+  ----side note: BIC selects: ind, mjrd, road, Nox, R2 = 0.6227
+  
+
+
+AIC did not suggest interaction terms for:
+
+-Montreal Winter Linear
+
+  ----side note: BIC selects: open, build, d_airport^2, R2 = 0.4438
+
+
+
+-Montreal Annual Linear u4k
+
+  ----side note: BIC selects: d_NPRI, tot_Nox, d_shore^2, R2 = 0.4759
+
+
+
+-M+T Pooled Log-Linear o0u13k (AIC sugested is R2 = 0.37)
+
+  ----side note: BIC suggests: d_shore, d_railline, ind_1000m and mjrd_300m, R2 = 0.314
 
 
 

@@ -24,3 +24,5 @@ Made Historgrams of all the residuals. Also made an RMD file to organize my thou
 Selected variables for MTL Annual
 
 RMD for variable selection completed. 
+
+Incorporated and analyzed woodburn buffers. Started using leaps(). Limited success. |Partially updated the RMD, though there isn't much to put in there.

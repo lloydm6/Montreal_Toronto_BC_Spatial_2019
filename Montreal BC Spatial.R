@@ -16,8 +16,16 @@ library(ggpmisc)
 library(miscTools)
 library(MASS)
 library(leaps)
-
+library(googleway)
 library(rJava)
+library(caret)
+library(sf)
+library(rgdal)
+library(raster)
+library(ggplot2)
+library(gridExtra)
+library(stringr)
+library(ape)
 
 #xlsx was working but now it doesn't. It says it need rJava to work. I tried to get rJava to work (~5hrs of internet wormhole trial and error). I made some progress (changed the type of errors I got), but it's still not working. 
 #the rJava bug has been fixed for now, but the underlying Java 12 problem has not been solved, so other packages that require Java do not work. 
@@ -39,6 +47,7 @@ setwd("/Users/macbook/Documents/McGill School/Practicum/Montreal_Toronto_BC_Spat
 ########### Read in all the data
 #columns AB and AC in the spread sheet are the outcomes of interest. AD also indicates if the data is good or not (eliminate the = 0)
 m.t.s.outcomes.raw <- read.csv("Montreal and Toronto SPATIAL STUDY FILTER DATA and Chain of Custody 29-05-2019 SR.csv")
+
 #different columns in this one, I check it lower down in this code. 
 m.w.outcomes.raw <- read_xlsx("Montreal winter spatial study filter database 13 May (1).xlsx")
 str(m.w.outcomes.raw)
@@ -72,6 +81,7 @@ tail(m.s.wb.determinants)
 m.s.wb.determinants$filter <- as.factor(m.s.wb.determinants$filter)
 str(m.s.wb.determinants)
 tail(m.s.wb.determinants)
+summary(m.s.wb.determinants)
 #looks good, now to bind together in a matched way with the other determinants
 
 m.s.wb.determinants$filter <- as.character(m.s.wb.determinants$filter)
@@ -128,7 +138,7 @@ setdiff(as.character(subset(m.t.s.outcomes.raw, city == "Toronto")$filter), as.c
 
 str(m.s.determinants)
 #121 obs of 154 variables
-#now it's 124 obervations, hurray! Annnnd 155 variables
+#now it's 124 obervations, hurray! Annnnd 160 variables
 
 str(t.s.determinants)
 #100 observations of 152 variabales
@@ -140,6 +150,89 @@ str(m.t.s.outcomes.raw)
 str(m.t.s.outcomes.raw$filter)
 
 str(m.s.determinants$Filter_ID)
+
+
+#getting elevation
+#need lats and longs. initially used the lats and longs from Chain of Custody 29-05-2019 SR.csv, but there were some missing values
+#got sent a file from a later date that was more correct with lats and longs
+(m.t.s.outcomes.raw[,c(2:3, 73:74)])
+mtl.to.latlong <- read.csv("Montreal and Toronto SPATIAL STUDY FILTER DATA and Chain of Custody 03-07-2019 all.csv")
+mtl.to.latlong <- mtl.to.latlong[,c(1,2,5,6)]
+head(mtl.to.latlong)
+str(mtl.to.latlong)
+describe(mtl.to.latlong)
+
+#first time I did it it read it with a couple of them had positive longs, that can't be right. Change to negative. Now it's okay
+#mtl.to.latlong$longitude <- ifelse(mtl.to.latlong$longitude > 0, mtl.to.latlong$longitude*-1, mtl.to.latlong$longitude )
+
+#the googleway function just wants a simple df of lat and long
+mtl.to.just.latlong <-mtl.to.latlong[,3:4]
+
+#this is my API key from google
+key <- "AIzaSyBuZ4BbvdZNQbej19sGQddogYu4_FNAEVQ"
+
+#function can't handle NAs, filtered them out
+#mtl.to.elevation.googleway <- google_elevation(filter(mtl.to.just.latlong, !is.na(latitude) & !is.na(longitude)), location_type = "individual", key = key)
+#I printed out a couple and cross referenced on google maps. The elevations appear to be goood. 
+print(mtl.to.just.latlong[200,], digits = 10)
+#write the googleway output to a file to make sure I'm not running it every time. I'm not sure what would consitute enough usage to warrant a charge to my API, but I don't want to find out the hard way. 
+#note, have to put $results if writing from new googleway output
+#write.csv(mtl.to.elevation.googleway$results, file = "Cleaned Data csv/mtl.to.elevation.googleway.csv")
+mtl.to.elevation.googleway <- read.csv("Cleaned Data csv/mtl.to.elevation.googleway.csv")
+str(mtl.to.elevation.googleway)
+
+
+#get the list of complete cases, paste elevations to it
+mtl.to.latlong.cc <- filter(mtl.to.latlong, !is.na(latitude) & !is.na(longitude))
+#when reading this from csv .googleway, then the below is good. For from the actual googleway, you need a $results in there
+mtl.to.latlong.cc$elevation <- mtl.to.elevation.googleway$elevation
+#check to make sure with googleway output
+formattable(mtl.to.latlong.cc)
+#it's good, now join them
+mtl.to.latlong.elevation <- full_join(mtl.to.latlong, mtl.to.latlong.cc, by = "filter")
+str(mtl.to.latlong.elevation)
+
+#now sneak it at the end of the determinants....Note: at this point, m.w.determinants hasn't been created yet, it gets created from m.s.determinants 
+colnames(m.s.determinants)
+colnames(t.s.determinants)
+colnames(mtl.to.latlong.elevation)[1] <- colnames(m.s.determinants)[1]
+colnames(mtl.to.latlong.elevation)
+mtl.to.latlong.elevation$Filter_ID <- as.character(mtl.to.latlong.elevation$Filter_ID)
+#full join is DANGEROUS! I've got mtl and to data all mixed in elevation. Need to left join
+m.s.determinants <- left_join(m.s.determinants, dplyr::select(mtl.to.latlong.elevation, Filter_ID, elevation, latitude.x, longitude.x), by = "Filter_ID")
+t.s.determinants <- left_join(t.s.determinants, dplyr::select(mtl.to.latlong.elevation, Filter_ID, elevation, latitude.x, longitude.x), by = "Filter_ID")
+str(m.s.determinants)
+str(t.s.determinants)
+describe(t.s.determinants$elevation)
+describe(m.s.determinants$elevation)
+#it looks like they both kept the same number of observations.....soooo I think it worked
+#there is 1 missing Montreal, which is it?
+is.na(m.s.determinants$elevation)
+m.s.determinants[85,]
+m.s.determinants[84:86, c(1,160:163)]
+NCOL(m.s.determinants)
+#missing MTL_space_41
+
+
+describe(filter(m.s.data, good_data == 1)$elevation)
+describe(filter(t.s.data, good_data == 1)$elevation)
+describe(filter(m.a.data)$elevation)
+describe(filter(t.s.data, good_data == 1)$elevation)
+length(m.a.data$elevation)
+
+nrow(filter(m.s.data, good_data == 1))
+nrow(filter(t.s.data, good_data == 1))
+
+#this was just a check to make sure the lats and longs are the same for the two files. 
+#it was from when they lats and longs were taken from determinants.raw
+#there are some missing lats and longs, there is another file with them so check to see what it's like
+mtl.to.latlong.2 <- read.csv("Montreal and Toronto SPATIAL STUDY FILTER DATA and Chain of Custody 03-07-2019 all.csv")
+mtl.to.latlong.1and2 <- left_join(mtl.to.latlong, mtl.to.latlong.2[,1:6], by = "filter")
+mtl.to.latlong.1and2$latitude.x == mtl.to.latlong.1and2$latitude.y
+mtl.to.latlong.1and2$longitude.x == mtl.to.latlong.1and2$longitude.y
+tail(dplyr::filter(mtl.to.latlong.1and2, city.x == "Montreal"))
+#so they are all true or NA. No falses. I think that means we are good. I took a peek and .2 has the missing MTLs
+#so should be using a different 
 
 #data clean#####
 #########Cleaning
@@ -180,6 +273,7 @@ as.numeric(m.s.outcomes[ , 28])
 as.numeric(as.character(m.s.outcomes[ , 28]))
 length(as.factor(m.s.outcomes[ , 30]))
 
+#bring them all together. The m.s.determinants come in with everything except the first column, so I can keep adding variables to the end if I want
 m.s.data.all <- data.frame(f.id = m.s.determinants$Filter_ID, bc_conc = as.numeric(m.s.outcomes[ , 28]), uvpm_conc = as.numeric(as.character(m.s.outcomes[ , 29])), good_data = as.factor(m.s.outcomes[ , 30]), m.s.determinants[ , -1])
 
 slice(m.s.data.all, 40:50)
@@ -209,6 +303,7 @@ as.numeric(t.s.outcomes[ , 28])
 as.numeric(as.character(t.s.outcomes[ , 29]))
 
 #i'll keep them separate for the unpooled unis. I'm sure I could fancy code this, but not tonight cowboy. Will mash togther for the pooled. 
+#bring them all together. The t.s.determinants come in with everything except the first column, so I can keep adding variables to the end if I want
 t.s.data.all <- data.frame(f.id = t.s.determinants$Filter_ID, bc_conc = as.numeric(t.s.outcomes[ , 28]), uvpm_conc = as.numeric(as.character(t.s.outcomes[ , 29])), good_data = as.factor(t.s.outcomes[ , 30]), t.s.determinants[ , -1])
 
 #just checking to make sure they are the correct length
@@ -218,6 +313,7 @@ length(as.numeric(as.character(t.s.outcomes[ , 27])))
 nrow(t.s.determinants[ , -1])
 head(t.s.data.all[,1:4 ])
 str(t.s.data.all)
+t.s.data.all[,155:158]
 
 #take out bad data
 t.s.data <- subset(t.s.data.all, good_data == 1)
@@ -343,7 +439,7 @@ all.equal(m.a.s.data[ , 5:ncol(m.a.s.data)], m.a.w.data[ , 10:ncol(m.a.w.data)])
 
 m.a.data <- data.frame(m.a.data, m.a.s.data[ , 5:ncol(m.a.s.data)])
 str(m.a.data)
-str(m.a.data[ , 160:169])
+str(m.a.data[ , 160:172])
 #woodburn is in there
 
 m.s.v.w.change <- m.a.data[, 1:10]
@@ -374,6 +470,8 @@ max(m.s.data.stan$woodburn_500m)
 max(m.s.data$woodburn_500m)
 max(m.s.data$woodburn_750m)
 max(m.s.data$woodburn_1000m)
+head(m.s.outcomes)
+formattable(subset(m.s.outcomes, BC_ng_m3 > 10000))
 #we see later that woodburn_500m is the only wb buffer that shows up anywhere and it only shows up when all MTL summer data is around. 
 #It's the 12k data point that has the max woodburn_500m value
 #Note that it doesn't have a max value for any of the other woodburns, but has high _750 and _1000
@@ -391,6 +489,38 @@ formattable(m.s.out)
 
 write.csv(t.outlier, "t.outlier.csv")
 write.csv(m.s.outlier, "m.outlier.csv")
+
+length(colnames(m.s.determinants))
+length(colnames(t.s.determinants))
+nrow(m.s.data)
+describe(m.s.data$bc_conc)
+describe(m.a.data$a.bc_conc)
+describe(m.w.data$bc_conc)
+describe(t.s.data$bc_conc)
+describe(mts.data.pool$bc_conc)
+#so many Toronto sites without BC measures. Is that okay? Double check to make sure
+looky <- read.csv("Montreal and Toronto SPATIAL STUDY FILTER DATA and Chain of Custody 29-05-2019 SR.csv")
+formattable(dplyr::filter(looky, city == "Toronto"))
+nrow(dplyr::filter(looky, city == "Toronto"))
+nrow(dplyr::filter(looky, city == "Toronto" & !is.na(BC_ng_m3)))
+nrow(dplyr::filter(looky, city == "Toronto" & !is.na(BC_ng_m3) & Good_quality == 1))
+#yep, it's okay
+describe(t.s.outcomes$Good_quality)
+dplyr::filter(looky, BC_ng_m3 > 30000)
+dplyr::filter(t.s.determinants, Filter_ID == "TO_space_94")
+
+
+
+###Toronto actually has some wierd IVs:
+#4 observations that have Nox_1000m of 0 but a Nox_750m that is non-zero. Three of them have "good data" that makes it through and becomes part of the analysis. 
+filter(t.s.data, tot_Nox_1000m == 0)
+filter(t.s.data, tot_Nox_750m == 0)
+
+#toronto has crazy low number of bus stops
+describe(t.s.data$bus_stop_1000m)
+
+#toronto also has an observation of inter_1000m = 0......so how did they drive there?!
+filter(t.s.data, inter_1000m == 0)
 
 
 
@@ -988,9 +1118,10 @@ str(all.data)
 ###MTL Summer
 #time to standardize it
 #this is how to standardize just part of the data frame
-colnames(m.s.data)[c(-1,-2,-3,-4)]
-summary(scale(m.s.data[ , c(-1,-2,-3,-4)]))
-m.s.data.stan <- data.frame(m.s.data[ , 1:4], scale(m.s.data[ , c(-1,-2,-3,-4)]))
+NCOL(m.s.data)
+colnames(m.s.data)[c(-1,-2,-3,-4,-165,-166)]
+summary(scale(m.s.data[ , c(-1,-2,-3,-4,-165,-166)]))
+m.s.data.stan <- data.frame(m.s.data[ , 1:4], m.s.data[ , 165:166], scale(m.s.data[ , c(-1,-2,-3,-4,-165,-166)]))
 summary(m.s.data.stan)
 #can see in the summary that all the means are zero
 apply(m.s.data.stan, 2, sd)
@@ -998,9 +1129,10 @@ apply(m.s.data.stan, 2, sd)
 
 
 ##MTL Winter
-colnames(m.w.data)[c(-1:-9)]
-summary(scale(m.s.data[ , c(-1:-9)]))
-m.w.data.stan <- data.frame(m.w.data[ , 1:9], scale(m.w.data[ , c(-1:-9)]))
+NCOL(m.w.data)
+colnames(m.w.data)[c(-1:-9, -170, -171)]
+summary(scale(m.w.data[ , c(-1:-9, -170, -171)]))
+m.w.data.stan <- data.frame(m.w.data[ , 1:9], m.w.data[ , 170:171], scale(m.w.data[ , c(-1:-9, -170, -171)]))
 summary(m.w.data.stan)
 #can see in the summary that all the means are zero
 #note:NPRI_PM_300m, 200m, and rail_50m are NA, need to remove them for the regressions 
@@ -1019,16 +1151,18 @@ summary(m.w.data.stan)
 str(m.w.data.stan)
 
 #alsooo, there are the extra columns I used when lining up the filter IDs. Pull those out just to make it a bit shorter. Leave in the winter and summer filter IDs, but pull every else.
-head(m.w.data.stan[,1:10])
-m.w.data.stan <- dplyr::select(m.w.data.stan, 1, 9, 2:3, 10:ncol(m.w.data.stan))
-
+head(m.w.data.stan[,1:12])
+head(m.w.data.stan[,10:11])
+m.w.data.stan <- dplyr::select(m.w.data.stan, 1, 9, 2:3, 10:11, 12:ncol(m.w.data.stan))
+str(m.w.data.stan)
 
 ####MTL Annual
-colnames(m.a.data)[c(1:10)]
+colnames(m.a.data)[c(1:12)]
 colnames(m.a.data)[c(-1:-10)]
 summary(scale(m.a.data[ , c(-1:-10)]))
-m.a.data.stan <- data.frame(m.a.data[ , 1:10], scale(m.a.data[ , c(-1:-10)]))
-summary(m.w.data.stan)
+ncol(m.a.data)
+m.a.data.stan <- data.frame(m.a.data[ , 1:10], m.a.data[ , 171:172], scale(m.a.data[ , c(-1:-10, -171, -172)]))
+summary(m.a.data.stan)
 
 #NAs for NPRI_PM_300m  NPRI_PM_200m rail_50m, need to remove them for the regressions 
 
@@ -1046,9 +1180,8 @@ summary(m.a.data.stan)
 str(m.a.data.stan)
 
 #alsooo, there are the extra columns I used for calculations and out of interest. Pull those out just to make it a bit shorter. Leave in the winter and summer filter IDs, but pull every else.
-head(m.a.data.stan[,1:10])
-m.a.data.stan <- dplyr::select(m.a.data.stan, 1:2, 7, 9, 11:ncol(m.a.data.stan))
-
+head(m.a.data.stan[,1:12])
+m.a.data.stan <- dplyr::select(m.a.data.stan, 1:2, 7, 9, 11, 12, 13:ncol(m.a.data.stan))
 
 
 
@@ -1056,8 +1189,9 @@ m.a.data.stan <- dplyr::select(m.a.data.stan, 1:2, 7, 9, 11:ncol(m.a.data.stan))
 #time to standardize it
 #this is how to standardize just part of the data frame
 colnames(t.s.data)[c(-1,-2,-3,-4)]
-summary(scale(t.s.data[ , c(-1,-2,-3,-4)]))
-t.s.data.stan <- data.frame(t.s.data[ , 1:4], scale(t.s.data[ , c(-1,-2,-3,-4)]))
+summary(scale(t.s.data[ , c(-1,-2,-3,-4, -157, -158)]))
+ncol(t.s.data)
+t.s.data.stan <- data.frame(t.s.data[ , 1:4], t.s.data[ , 157:158], scale(t.s.data[ , c(-1,-2,-3,-4, -157, -158)]))
 summary(t.s.data.stan)
 #can see in the summary that all the means are zero
 apply(t.s.data.stan, 2, sd)
@@ -1116,7 +1250,7 @@ t.s.data.pool$woodburn_200m <- rep(NA, nrow(t.s.data))
 t.s.data.pool$woodburn_100m <- rep(NA, nrow(t.s.data))
 describe(t.s.data.pool$d_woodburn)
 str(t.s.data.pool)
-str(t.s.data.pool[, 150:159])  
+str(t.s.data.pool[, 150:162])  
 #woodburn is in there. 
 
 mts.data.pool <- as.data.frame(rbind(m.s.data.pool, t.s.data.pool))
@@ -1126,12 +1260,13 @@ describe(mts.data.pool$city)
 describe(mts.data.pool)
 
 #standardize them
-colnames(mts.data.pool)[c(-1,-2,-3,-4, -ncol(mts.data.pool))]
-summary(scale(mts.data.pool[ , c(-1,-2,-3,-4, -ncol(mts.data.pool))]))
-mts.data.pool.stan <- data.frame(mts.data.pool[ , 1:4], city =mts.data.pool$city, scale(mts.data.pool[ , c(-1,-2,-3,-4,-ncol(mts.data.pool))]))
+ncol(mts.data.pool)
+colnames(mts.data.pool)[c(-1,-2,-3,-4, -161, -162, -ncol(mts.data.pool))]
+summary(scale(mts.data.pool[ , c(-1,-2,-3,-4, -161, -162,-ncol(mts.data.pool))]))
+mts.data.pool.stan <- data.frame(mts.data.pool[ , 1:4], city =mts.data.pool$city, latitude.x = mts.data.pool$latitude.x, longitude.x = mts.data.pool$longitude.x,scale(mts.data.pool[ , c(-1,-2,-3,-4, -161, -162, -ncol(mts.data.pool))]))
 summary(mts.data.pool.stan)
-head(mts.data.pool.stan[ ,1:5])
-tail(mts.data.pool.stan[ ,1:5])
+head(mts.data.pool.stan[ ,1:7])
+tail(mts.data.pool.stan[ ,1:7])
 #TOs are coded TO and MTLs are coded MTL
 
 #can see in the summary that all the means are zero
@@ -1147,7 +1282,7 @@ apply(mts.data.pool.stan, 2, sd)
 
 #####MTL UNI Regressions
 str(m.s.data.stan)
-long.m.s.data.stan <- melt(m.s.data.stan, id.vars = c("f.id", "bc_conc", "uvpm_conc", "good_data"))
+long.m.s.data.stan <- melt(m.s.data.stan, id.vars = c("f.id", "bc_conc", "uvpm_conc", "good_data", "latitude.x", "longitude.x"))
 str(long.m.s.data.stan)
 
 #trying out this: https://datascienceplus.com/how-to-do-regression-analysis-for-multiple-independent-or-dependent-variables/
@@ -1155,7 +1290,7 @@ str(long.m.s.data.stan)
 summary(long.m.s.data.stan)
 nrow(long.m.s.data.stan)/nrow(m.s.data.stan)
 str(m.s.determinants)
-#determinants had 155 columns, filter_id and 154 others. Now the data frame is 154 times longer, I think we're good to go
+#determinants had 163 columns, filter_id, lat, long, and 160 others. Now the data frame is 160 times longer, I think we're good to go
 slice(long.m.s.data.stan, 1:10)
 #slice is basially head, but you can pick where to look
 slice(long.m.s.data.stan, 200:210)
@@ -1377,12 +1512,90 @@ write.csv(m.s.u4k.uvpm.uni.reg, file = "MTL_S_u4k_UVPM_Uni_Regressions.csv")
 
 
 
+
+###try cutting out the zeros and the over 4k
+
+
+m.s.outlier.level <- 4000
+m.s.o0u4k.bc.uni.beta.p <- subset(long.m.s.data.stan, bc_conc < m.s.outlier.level & bc_conc > 0) %>%
+  group_by(variable) %>%
+  do(tidy(lm(bc_conc ~ value, .))) %>%
+  filter(term == "value") %>%
+  mutate(Beta = as.character(round(estimate, 2)), "P Value" = round(p.value, 3), SE = round(std.error, 1)) %>% 
+  dplyr::select(Beta, SE, "P Value") %>% 
+  as.data.frame()
+#to get CIs
+m.s.o0u4k.bc.uni.cis <- subset(long.m.s.data.stan, bc_conc < m.s.outlier.level & bc_conc > 0) %>%
+  group_by(variable) %>%
+  do(tidy(confint(lm(bc_conc ~ value, .)))) %>%
+  filter(.rownames == "value") %>%
+  mutate("2.5%" = as.character(round(X2.5.., 2)), "97.5%" = as.character(round(X97.5.., 2))) %>% 
+  dplyr::select("2.5%", "97.5%") %>% 
+  as.data.frame()
+#get the R2
+m.s.o0u4k.bc.uni.r2 <- subset(long.m.s.data.stan, bc_conc < m.s.outlier.level & bc_conc > 0) %>% 
+  nest(-variable) %>% 
+  mutate(fit = map(data, ~ lm(bc_conc ~ value, data = .)),
+         results = map(fit, glance)) %>% 
+  unnest(results) %>% 
+  dplyr::select(variable, r.squared, deviance) %>%
+  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.s.data.stan$bc_conc))))
+nrow(m.s.o0u4k.bc.uni.beta.p)
+nrow(m.s.o0u4k.bc.uni.cis)
+nrow(m.s.o0u4k.bc.uni.r2)
+
+#rail_50 is NA, it gets included in the CIs and R2, but not in the beta.p for some reason. Need to cut it out. 
+setdiff(m.s.o0u4k.bc.uni.beta.p$variable, m.s.o0u4k.bc.uni.cis$variable)
+setdiff(m.s.o0u4k.bc.uni.cis$variable, m.s.o0u4k.bc.uni.beta.p$variable)
+describe(m.s.data.stan$rail_50m)
+#it's all zeros and 1 high value. Not an informative variable.
+filter(m.s.o0u4k.bc.uni.beta.p, variable == "rail_50m")
+filter(m.s.o0u4k.bc.uni.cis, variable == "rail_50m")
+filter(m.s.o0u4k.bc.uni.r2, variable == "rail_50m")
+
+#for bringing it all together, it's better to insert a row
+m.s.o0u4k.bc.uni.beta.p <- add_row(m.s.o0u4k.bc.uni.beta.p, variable = setdiff(m.s.o0u4k.bc.uni.cis$variable, m.s.o0u4k.bc.uni.beta.p$variable), Beta = NA, SE = NA, `P Value` = NA, .after = which(is.na(m.s.o0u4k.bc.uni.cis$`2.5%`)))
+
+#put em together 
+m.s.o0u4k.bc.uni.reg <- data.frame(m.s.o0u4k.bc.uni.beta.p[ , c(1,2)], lapply(m.s.o0u4k.bc.uni.cis[ , c(2,3)], as.numeric), round(m.s.o0u4k.bc.uni.r2[ ,2:3], 5), m.s.o0u4k.bc.uni.beta.p[ , c(3,4)])
+m.s.o0u4k.bc.uni.reg$Beta <- as.numeric(m.s.o0u4k.bc.uni.reg$Beta)
+
+nrow(subset(m.s.o0u4k.bc.uni.reg, P.Value < 0.05))
+nrow(subset(m.s.u4k.bc.uni.reg, P.Value < 0.05))
+#so there's more. Does it matter?
+
+formattable(m.s.o0u4k.bc.uni.reg)
+formattable(subset(m.s.o0u4k.bc.uni.reg, P.Value <= 0.05))
+
+#compared to just the u4k, add ind_1000m, resid_750m, d_railline and remove d_NPRI_PM and rail_50m (I think those get removed anyways). Do a quick check on the plots:
+plot(m.s.data.stan$bc_conc, m.s.data.stan$ind_1000m)
+?plot
+ggplot(data = filter(m.s.data.stan, bc_conc > 0 & bc_conc < 4000), aes(x = d_railline, y = bc_conc)) + 
+  geom_point() +   
+  stat_smooth(method="loess") + 
+  stat_fit_glance(method = "lm",
+                  method.args = list(formula = y ~ x),
+                  aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
+                                      stat(r.squared), stat(p.value))), parse = TRUE)
+#checked those three on three separate plots. They all look pretty decent. ind_1000m looks really good. Try some quick regressions:
+m.s.o0u4k.full.multi.lm <- lm(data = filter(m.s.data.stan, bc_conc < 4000 & bc_conc > 0), bc_conc ~ ind_1000m + resid_750m + d_railline + build_1000m + mjrd_750m + d_majrd + bus_50m + bus_stop_750m + traffic_750m + 
+                              tot_traffic_750m + Nox_750m + tot_Nox_750m + d_NPRI_Nox + d_airport)
+summary(m.s.o0u4k.full.multi.lm)
+#0.34 with the u4k data and the o0u4k selected variables
+#0.405 with the o0u4k data and the o0u4k selected variables
+summary(lm(data = filter(m.s.data.stan, bc_conc < 4000 & bc_conc > 0), bc_conc ~ build_1000m + mjrd_750m + d_majrd + bus_50m + bus_stop_750m + traffic_750m + 
+             tot_traffic_750m + Nox_750m + tot_Nox_750m + d_NPRI_Nox + d_airport))
+#0.32 for u4k data with the u4k selected variables. 
+#0.38 for o0u4k data with the u4k selected variables. 
+
+#conclusion: it's not just the zero values that make Montreal Summer tough to model. There is something else there that we weren't able to capture
+
 # MTL Winter Uni Regressions #####
 
 #####MTL Winter UNI Regressions
 str(m.w.data.stan)
 colnames(m.w.data.stan)[1:2] <- c("f.id.winter", "f.id")
-long.m.w.data.stan <- melt(m.w.data.stan, id.vars = c("f.id", "f.id.winter", "bc_conc", "uvpm_conc"))
+long.m.w.data.stan <- melt(m.w.data.stan, id.vars = c("f.id", "f.id.winter", "bc_conc", "uvpm_conc", "latitude.x", "longitude.x"))
 str(long.m.w.data.stan)
 
 #trying out this: https://datascienceplus.com/how-to-do-regression-analysis-for-multiple-independent-or-dependent-variables/
@@ -1390,7 +1603,7 @@ str(long.m.w.data.stan)
 summary(long.m.w.data.stan)
 ncol(m.w.data.stan)
 nrow(long.m.w.data.stan)/nrow(m.w.data.stan)
-#data.stan had 155 columns, 2 filter ids, 2 outcomes, and 151 determinants. Now the data frame is 151 times longer, I think we're good to go
+#data.stan had 163 columns, 2 filter ids, 2 outcomes, lat and long, and 157 determinants. Now the data frame is 157 times longer, I think we're good to go
 #new woodburning data in there, so numbers changed
 slice(long.m.w.data.stan, 1:10)
 #slice is basially head, but you can pick where to look
@@ -1514,18 +1727,18 @@ hist(m.w.data.stan$uvpm_conc)
 # MTL Annual Uni Regressions ######
 str(m.a.data.stan)
 colnames(m.a.data.stan)[3:4] <- c("bc_conc", "uvpm_conc")
-long.m.a.data.stan <- melt(m.a.data.stan, id.vars = c("f.id.summer", "f.id.winter", "bc_conc", "uvpm_conc"))
-str(long.m.w.data.stan)
+long.m.a.data.stan <- melt(m.a.data.stan, id.vars = c("f.id.summer", "f.id.winter", "bc_conc", "uvpm_conc", "latitude.x", "longitude.x"))
+str(long.m.a.data.stan)
 
 #check to make sure nothing is too squirrelly
-summary(long.m.w.data.stan)
-ncol(m.w.data.stan)
-nrow(long.m.w.data.stan)/nrow(m.w.data.stan)
-#data.stan had 155 columns, 2 filter ids, 2 outcomes, and 151 determinants. Now the data frame is 151 times longer, I think we're good to go
+summary(long.m.a.data.stan)
+ncol(m.a.data.stan)
+nrow(long.m.a.data.stan)/nrow(m.a.data.stan)
+#data.stan had 163 columns, 2 filter ids, 2 outcomes, lat and long, and 157 determinants. Now the data frame is 157 times longer, I think we're good to go
 #new variables added, so different number, but still looks correct
-slice(long.m.w.data.stan, 1:10)
+slice(long.m.a.data.stan, 1:10)
 #slice is basially head, but you can pick where to look
-slice(long.m.w.data.stan, 200:210)
+slice(long.m.a.data.stan, 200:210)
 
 #do simple regressions on bc_conc for each of the determinants
 m.a.bc.uni.beta.p <- long.m.a.data.stan %>%
@@ -1648,6 +1861,11 @@ nrow(subset(m.a.uvpm.uni.reg, P.Value <= 0.05))
 #6 BC and 5 uvpm
 #now 6 and 6
 
+#if I just blindly take them....
+summary(lm(data = m.a.data.stan, bc_conc ~ com_300m + bus_stop_300m + NPRI_PM_500m + d_airport))
+#thought maybe those could make a model, but looking at the xy plots, com and bus_stop are not legit. Take them out and it's a 2 variable model, withouth NOx, that has an R2 of 0.2
+
+
 formattable(subset(m.a.bc.uni.reg, P.Value <= 0.05))
 formattable(subset(m.a.uvpm.uni.reg, P.Value <= 0.05))
 #sooooo not a lot. Can compare. Maybe these are the most important? We'll see.....
@@ -1685,7 +1903,7 @@ m.a.u4k.bc.uni.r2 <- subset(long.m.a.data.stan, bc_conc < m.a.outlier.level) %>%
          results = map(fit, glance)) %>% 
   unnest(results) %>% 
   dplyr::select(variable, r.squared, deviance) %>%
-  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(m.a.data.stan$bc_conc))))
+  transmute(variable, r.squared, RMSE = sqrt(deviance/(sum(!is.na(m.a.data.stan$bc_conc) ) - 3) ) )
 
 #com_50 is NA, it gets included in the CIs and R2, but not in the beta.p for some reason. Need to cut it out. 
 setdiff(m.a.u4k.bc.uni.beta.p$variable, m.a.u4k.bc.uni.cis$variable)
@@ -1702,11 +1920,13 @@ filter(m.a.u4k.bc.uni.r2, variable == "com_50m")
 m.a.u4k.bc.uni.beta.p <- add_row(m.a.u4k.bc.uni.beta.p, variable = setdiff(m.a.u4k.bc.uni.cis$variable, m.a.u4k.bc.uni.beta.p$variable), Beta = NA, SE = NA, `P Value` = NA, .after = which(is.na(m.a.u4k.bc.uni.cis$`2.5%`)))
 
 #put em together 
-m.a.u4k.bc.uni.reg <- data.frame(m.a.u4k.bc.uni.beta.p[ , c(1,2)], lapply(m.a.u4k.bc.uni.cis[ , c(2,3)], as.numeric), round(m.a.u4k.bc.uni.r2[ ,2:3], 5), m.a.u4k.bc.uni.beta.p[ , c(3,4)])
-m.a.u4k.bc.uni.reg$Beta <- as.numeric(m.a.u4k.bc.uni.reg$Beta)
+#something was going wierd with the build of the data frame. Com_50m and  Gov_50m were swithcing CIs. Rewrote it using dplpyr. I think the output is the smae. Way better with dplyr. Made this change to Toronto Summer too. 
+summary(full_join(m.a.u4k.bc.uni.beta.p, m.a.u4k.bc.uni.cis, by = "variable") %>% full_join(m.a.u4k.bc.uni.r2, by = "variable") %>% transmute(variable = variable, Beta = as.numeric(Beta), "2.5%" = as.numeric(`2.5%`), "97.5" = as.numeric(`97.5%`), r.squared, RMSE, SE, `P Value`))
 
-
-str(m.a.u4k.bc.uni.reg)
+m.a.u4k.bc.uni.reg <- full_join(m.a.u4k.bc.uni.beta.p, m.a.u4k.bc.uni.cis, by = "variable") %>% 
+                                full_join(m.a.u4k.bc.uni.r2, by = "variable") %>% 
+                                transmute(variable = variable, Beta = as.numeric(Beta), "2.5%" = as.numeric(`2.5%`), "97.5" = as.numeric(`97.5%`), r.squared, RMSE, SE, `P Value`)
+summary(m.a.u4k.bc.uni.reg)
 
 nrow(subset(m.a.u4k.bc.uni.reg, P.Value <= 0.05))
 nrow(subset(m.a.bc.uni.reg, P.Value <= 0.05))
@@ -2072,7 +2292,7 @@ nrow(subset(m.a.log.u4k.bc.uni.reg, P.Value <= 0.05))
 #trying out this: https://datascienceplus.com/how-to-do-regression-analysis-for-multiple-independent-or-dependent-variables/
 #this first step makes the wide data long to set up the code further down
 str(t.s.data.stan)
-long.t.s.data.stan <- melt(t.s.data.stan, id.vars = c("f.id", "bc_conc", "uvpm_conc", "good_data"))
+long.t.s.data.stan <- melt(t.s.data.stan, id.vars = c("f.id", "bc_conc", "uvpm_conc", "good_data", "latitude.x", "longitude.x"))
 str(long.t.s.data.stan)
 
 #check to make sure nothing is too squirrelly
@@ -2080,7 +2300,7 @@ summary(long.t.s.data.stan)
 nrow(long.t.s.data.stan)/nrow(t.s.data.stan)
 ncol(t.s.data.stan)
 str(t.s.data.stan)
-#we had 78 rows for 149 columns, all but 4 got staked underneath. We should now have a df that is 145 times longer. CHECK!
+#we had 78 rows for 152 columns, all but 6 got staked underneath. We should now have a df that is 146 times longer. CHECK!
 
 slice(long.t.s.data.stan, 1:10)
 #slice is basially head, but you can pick where to look
@@ -2207,13 +2427,19 @@ to.u10k.bc.uni.r2 <- subset(long.t.s.data.stan, bc_conc < t.outlier.level)  %>%
          results = map(fit, glance)) %>% 
   unnest(results) %>% 
   dplyr::select(variable, r.squared, deviance) %>%
-  transmute(variable, r.squared, RMSE = sqrt(deviance/sum(!is.na(t.s.data.stan$bc_conc))))
+  transmute(variable, r.squared, RMSE = sqrt(deviance/(sum(!is.na(t.s.data.stan$bc_conc))-1)))    #note that there is a -1 because of the 1 outlier removed. 
 
+summary(full_join(to.u10k.bc.uni.beta.p, to.u10k.bc.uni.cis, by = "variable") %>% 
+                                full_join(to.u10k.bc.uni.r2, by = "variable") %>% 
+                                transmute(variable = variable, Beta = as.numeric(Beta), "2.5%" = as.numeric(`2.5%`), "97.5" = as.numeric(`97.5%`), r.squared, RMSE, SE, `P Value`))
 
 #put em together 
-to.u10k.bc.uni.reg <- data.frame(to.u10k.bc.uni.beta.p[ , c(1,2)], lapply(to.u10k.bc.uni.cis[ , c(2,3)], as.numeric), round(to.u10k.bc.uni.r2[ ,2:3], 5), to.u10k.bc.uni.beta.p[ , c(3,4)])
-to.u10k.bc.uni.reg$Beta <- as.numeric(to.u10k.bc.uni.reg$Beta)
-str(to.u10k.bc.uni.reg)
+#montreal annual has issues, so I changed to dplyr code
+to.u10k.bc.uni.reg <- full_join(to.u10k.bc.uni.beta.p, to.u10k.bc.uni.cis, by = "variable") %>% 
+                                full_join(to.u10k.bc.uni.r2, by = "variable") %>% 
+                                transmute(variable = variable, Beta = as.numeric(Beta), "2.5%" = as.numeric(`2.5%`), "97.5" = as.numeric(`97.5%`), r.squared, RMSE, SE, `P Value`)
+
+summary(to.u10k.bc.uni.reg)
 
 formattable(to.u10k.bc.uni.reg)
 nrow(subset(to.bc.uni.reg, P.Value <= 0.05))
@@ -2433,7 +2659,7 @@ setdiff(filter(to.u10k.bc.uni.reg, P.Value < 0.05)$variable, filter(to.log.o0.bc
 long.mts.pool.data.stan
 str(mts.data.pool.stan)
 mts.data.pool.stan$d_woodburn
-long.mts.pool.data.stan <- melt(mts.data.pool.stan, id.vars = c("f.id", "bc_conc", "uvpm_conc", "good_data", "city"))
+long.mts.pool.data.stan <- melt(mts.data.pool.stan, id.vars = c("f.id", "bc_conc", "uvpm_conc", "good_data", "city", "latitude.x", "longitude.x"))
 str(long.mts.pool.data.stan)
 tail(long.mts.pool.data.stan$variable)
 
@@ -3885,16 +4111,71 @@ formattable(all.data.together)
 #also looking for log() regressions. 
 #this leaves: m.s.bc.u4k, m.a.bc.u4k, t.bc.u10k, mts.pool.bc.u10k......and then the logs
 
-#try splitting the first column for the table
-separate(m.s.uvpm.uni.reg, col = variable, into = c("IV", "Buffer Size"), sep = "_", remove = TRUE)
-#that works, but we'vev got those d_  and tot_ variables
-m.s.uvpm.uni.reg$variable
-sub("d_[[:alpha:]]", "d.", m.s.uvpm.uni.reg$variable)
-gsub("^d_", "d.", m.s.uvpm.uni.reg$variable)
-gsub("tot_", "tot.", m.s.uvpm.uni.reg$variable)
+### MTL Annual
+#change the names of variables to make it easier to split
+tbl.m.a.u4k.bc.uni <- m.a.u4k.bc.uni.reg
+tbl.m.a.u4k.bc.uni$variable <- tbl.m.a.u4k.bc.uni$variable %>%
+  gsub("^NPRI_", "NPRI.", .) %>%
+  gsub("^d.NPRI_", "d.NPRI.", .) %>%
+  gsub("^d_", "Distanceto.", .) %>%
+  gsub("^d.", "Distanceto.", .) %>%
+  gsub("^tot_", "total ", .) %>%
+  gsub("^bus_stop", "bus.stop", .) %>%
+  gsub("0m$", "0", .) %>%
+  str_to_title() %>%
+  gsub("Npri", "NPRI", .) %>%
+  gsub("nox", "NOx", .) %>%
+  gsub("Nox", "NOx", .) %>%
+  print()
+#all of the variables
+tbl.m.a.u4k.bc.uni %>%
+  transmute(variable = variable, Beta = paste(Beta, " (", `2.5%`, ", ", `97.5`, ")", sep = ""), r.squared = r.squared, RMSE = RMSE) %>%
+  separate(col = variable, into = c("Independent Variable", "Buffer Size"), sep = "_", remove = TRUE) %>%
+  arrange(`Independent Variable`) %>%
+  write.csv("Paper Tables/tbl.m.a.u4k.bc.uni.csv")
 
-m.s.u4k.bc.uni.reg
+#split, remove the p > 0.05, and take out the SE and P.Value Columns. 
+tbl.m.a.u4k.bc.uni %>%
+  filter(P.Value < 0.05) %>%
+  formattable()
 
+m.a.u4k.bc.uni.reg
+confint(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ com_50m))
+confint(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ com_100m))
+confint(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ d_airport))
+confint(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ gov_50m))
+
+
+#toronto table
+#change the names of variables to make it easier to split
+tbl.to.u10k.bc.uni <- to.u10k.bc.uni.reg
+tbl.to.u10k.bc.uni$variable <- tbl.to.u10k.bc.uni$variable %>%
+  gsub("^NPRI_", "NPRI.", .) %>%
+  gsub("^d.NPRI_", "d.NPRI.", .) %>%
+  gsub("^d_", "Distanceto.", .) %>%
+  gsub("^d.", "Distanceto.", .) %>%
+  gsub("^tot_", "total ", .) %>%
+  gsub("^bus_stop", "bus.stop", .) %>%
+  gsub("0m$", "0", .) %>%
+  str_to_title() %>%
+  gsub("Npri", "NPRI", .) %>%
+  gsub("nox", "NOx", .) %>%
+  gsub("Nox", "NOx", .) %>%
+  print()
+#all of the variables
+tbl.to.u10k.bc.uni %>%
+  transmute(variable = variable, Beta = paste(Beta, " (", `2.5%`, ", ", `97.5`, ")", sep = ""), r.squared = r.squared, RMSE = RMSE) %>%
+  separate(col = variable, into = c("Independent Variable", "Buffer Size"), sep = "_", remove = TRUE) %>%
+  arrange(`Independent Variable`) %>%
+  write.csv("Paper Tables/tbl.to.u4k.bc.uni.csv")
+
+#split, remove the p > 0.05, and take out the SE and P.Value Columns. 
+tbl.to.u10k.bc.uni %>%
+  filter(P.Value < 0.05) %>%
+  formattable()
+
+
+#others. No need for now 
 #change the names of variables to make it easier to split
 tbl.m.s.u4k.bc.uni <- m.s.u4k.bc.uni.reg
 tbl.m.s.u4k.bc.uni$variable <- tbl.m.s.u4k.bc.uni$variable %>%
@@ -3910,38 +4191,6 @@ tbl.m.s.u4k.bc.uni %>%
   dplyr::select(-SE, -P.Value) %>%
   formattable()
 
-#change the names of variables to make it easier to split
-tbl.m.a.u4k.bc.uni <- m.a.u4k.bc.uni.reg
-tbl.m.a.u4k.bc.uni$variable <- tbl.m.a.u4k.bc.uni$variable %>%
-  gsub("^d_", "d.", .) %>%
-  gsub("^NPRI_", "NPRI.", .) %>%
-  gsub("^d.NPRI_", "d.NPRI.", .) %>%
-  gsub("^tot_", "tot.", .) %>%
-  gsub("^bus_stop", "bus.stop", .)
-
-#split, remove the p > 0.05, and take out the SE and P.Value Columns. 
-tbl.m.a.u4k.bc.uni %>%
-  separate(col = variable, into = c("Independent Variable", "Buffer Size"), sep = "_", remove = TRUE) %>%
-  filter(P.Value < 0.05) %>%
-  dplyr::select(-SE, -P.Value) %>%
-  formattable()
-
-
-#change the names of variables to make it easier to split
-tbl.to.u10k.bc.uni <- to.u10k.bc.uni.reg
-tbl.to.u10k.bc.uni$variable <- tbl.to.u10k.bc.uni$variable %>%
-  gsub("^d_", "d.", .) %>%
-  gsub("^NPRI_", "NPRI.", .) %>%
-  gsub("^d.NPRI_", "d.NPRI.", .) %>%
-  gsub("^tot_", "tot.", .) %>%
-  gsub("^bus_stop", "bus.stop", .)
-
-#split, remove the p > 0.05, and take out the SE and P.Value Columns. 
-tbl.to.u10k.bc.uni %>%
-  separate(col = variable, into = c("Independent Variable", "Buffer Size"), sep = "_", remove = TRUE) %>%
-  filter(P.Value < 0.05) %>%
-  dplyr::select(-SE, -P.Value) %>%
-  formattable()
 
 #change the names of variables to make it easier to split
 tbl.mts.pool.u10k.bc.uni <- mts.pool.u10k.bc.uni.reg
@@ -3958,6 +4207,78 @@ tbl.mts.pool.u10k.bc.uni %>%
   filter(P.Value < 0.05) %>%
   dplyr::select(-SE, -P.Value) %>%
   formattable()
+
+
+
+### Descriptives Tables ######
+
+tbl.m.a.bc.desc 
+tbl.m.a.bc.desc <- m.a.data.stan %>% 
+  filter(bc_conc < 4000) %>%
+  summarise(Minimum = min(bc_conc), "10th percentile" = quantile(bc_conc, 0.1), "First Quartile" = quantile(bc_conc, 0.25), Mean = mean(bc_conc), SD = sd(bc_conc), Median = median(bc_conc), "Third Quartile" = quantile(bc_conc, 0.75), "90th percentile" = quantile(bc_conc, 0.90), Maximum = max(bc_conc)) %>%
+  mutate("Mean (SD)" = paste(round(Mean, 2), " (", round(SD, 2), ")", sep = "")) %>%
+  dplyr::select(Minimum, `10th percentile`, `First Quartile`, `Mean (SD)`, Median, `Third Quartile`, `90th percentile`, Maximum)
+
+tbl.t.s.bc.desc <- t.s.data.stan %>% 
+  filter(bc_conc < 10000) %>%
+  summarise(Minimum = min(bc_conc), "10th percentile" = quantile(bc_conc, 0.1), "First Quartile" = quantile(bc_conc, 0.25), Mean = mean(bc_conc), SD = sd(bc_conc), Median = median(bc_conc), "Third Quartile" = quantile(bc_conc, 0.75), "90th percentile" = quantile(bc_conc, 0.90), Maximum = max(bc_conc)) %>%
+  mutate("Mean (SD)" = paste(round(Mean, 2), " (", round(SD, 2), ")", sep = "")) %>%
+  dplyr::select(Minimum, `10th percentile`, `First Quartile`, `Mean (SD)`, Median, `Third Quartile`, `90th percentile`, Maximum)
+
+tbl.m.a.t.s.bc.desc <- data.frame(Montreal = t(tbl.m.a.bc.desc), Toronto = t(tbl.t.s.bc.desc))
+write.csv(tbl.m.a.t.s.bc.desc, "Paper Tables/tbl.m.a.t.s.bc.desc.csv")
+
+library(table1)
+library(tableone)
+
+m.a.det.desc.data <- filter(m.a.data, a.bc_conc < 4000) %>% dplyr::select(11:(NCOL(m.a.data)-2))
+nrow(m.a.det.desc.data)
+
+m.a.det.desc.data
+m.a.det.desc <- data.frame("I.V" = colnames(m.a.det.desc.data), Mean = t(summarise_all(m.a.det.desc.data, funs(mean))), SD = t(summarise_all(m.a.det.desc.data, funs(sd))), 
+           Minimum = t(summarise_all(m.a.det.desc.data, funs(min))), Maximum = t(summarise_all(m.a.det.desc.data, funs(max))))  %>%
+  mutate("Mean (SD)" = paste(round(Mean, 2), " (", round(SD, 2), ")", sep = "")) %>%
+  dplyr::select(I.V, `Mean (SD)`, Minimum, Maximum) %>%
+  transmute("I.V" = I.V  %>% gsub("^NPRI_", "NPRI.", .) %>%
+              gsub("^d.NPRI_", "d.NPRI.", .) %>%
+              gsub("^d_", "Distanceto.", .) %>%
+              gsub("^d.", "Distanceto.", .) %>%
+              gsub("^tot_", "total ", .) %>%
+              gsub("^bus_stop", "bus.stop", .) %>%
+              gsub("0m$", "0", .) %>%
+              str_to_title() %>%
+              gsub("Npri", "NPRI", .) %>%
+              gsub("nox", "NOx", .) %>%
+              gsub("Nox", "NOx", .),
+            "Mean (SD)" = `Mean (SD)`, Minimum = round(Minimum, 2), Maximum = round(Maximum, 2)) %>%
+  separate(col = I.V, into = c("Independent Variable", "Buffer Size"), sep = "_", remove = TRUE) %>%
+  arrange(`Independent Variable`) %>%
+  write.csv("Paper Tables/m.a.det.desc.csv")
+
+summary(m.a.det.desc.data)                 
+
+t.s.det.desc.data <- filter(t.s.data, bc_conc < 10000) %>% dplyr::select(5:(NCOL(t.s.data)-2))
+nrow(t.s.det.desc.data)
+
+t.s.det.desc <- data.frame("I.V" = colnames(t.s.det.desc.data), Mean = t(summarise_all(t.s.det.desc.data, funs(mean))), SD = t(summarise_all(t.s.det.desc.data, funs(sd))), 
+                           Minimum = t(summarise_all(t.s.det.desc.data, funs(min))), Maximum = t(summarise_all(t.s.det.desc.data, funs(max))))  %>%
+  mutate("Mean (SD)" = paste(round(Mean, 2), " (", round(SD, 2), ")", sep = "")) %>%
+  dplyr::select(I.V, `Mean (SD)`, Minimum, Maximum) %>%
+  transmute("I.V" = I.V  %>% gsub("^NPRI_", "NPRI.", .) %>%
+              gsub("^d.NPRI_", "d.NPRI.", .) %>%
+              gsub("^d_", "Distanceto.", .) %>%
+              gsub("^d.", "Distanceto.", .) %>%
+              gsub("^tot_", "total ", .) %>%
+              gsub("^bus_stop", "bus.stop", .) %>%
+              gsub("0m$", "0", .) %>%
+              str_to_title() %>%
+              gsub("Npri", "NPRI", .) %>%
+              gsub("nox", "NOx", .) %>%
+              gsub("Nox", "NOx", .),
+            "Mean (SD)" = `Mean (SD)`, Minimum = round(Minimum, 2), Maximum = round(Maximum, 2)) %>%
+  separate(col = I.V, into = c("Independent Variable", "Buffer Size"), sep = "_", remove = TRUE) %>%
+  arrange(`Independent Variable`) %>%
+  write.csv("Paper Tables/t.s.det.desc.csv")
 
 
 
@@ -4328,6 +4649,11 @@ summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ d_woodburn + 
 
 
 
+####What if I don't trim out those 3 points above 4k? What do I get?
+summary(lm(data = m.a.data.stan, bc_conc ~ com_300m + bus_stop_300m + NPRI_PM_500m + d_airport))
+summary(lm(data = m.a.data.stan, bc_conc ~ bus_stop_300m + d_airport))
+summary(lm(data = m.a.data.stan, bc_conc ~ bus_stop_300m + d_airport + bus_stop_300m:d_airport))
+#but if you check the plots, com_300m isn't legit. Neither is NPRI_PM_500m. Take them out and we have nothing. 
 
 
 
@@ -4926,23 +5252,25 @@ formattable(tbl.mts.pool.u10k.bc.uni)
 #look at file mts.pool.xy.fit.plot.u10k.pu5.png for the p < 0.05 graphs and the tbl.mts.pool.u10k.bc.uni too
 
 mts.pool.u10k.lin.variables <- c("build_200m", "com_750m", "resid_750m", "ind_500m", "open_50m", "mjrd_300m", "road_50m", "d_majrd", "bus_50m", "inter_50m",
-                                 "traffic_50m", "tot_Nox_100m", "d_NPRI_PM", "d_airport", "d_port", "d_shore")
+                                 "traffic_50m", "tot_Nox_100m", "d_NPRI_PM", "d_airport", "d_port", "d_shore", "elevation")
 
 
 mts.pool.u10k.nlin.variables <- c(NA)
 
 #all the linear and non-linear together
 mts.pool.u10k.full.multi.lm <- lm(data = filter(mts.data.pool.stan, bc_conc < 10000), bc_conc ~ build_200m + com_750m + resid_750m + ind_500m + open_50m + mjrd_300m + road_50m + 
-             d_majrd + bus_50m + inter_50m + traffic_50m + tot_Nox_100m + d_NPRI_PM + d_airport + d_port + d_shore)
+             d_majrd + bus_50m + inter_50m + traffic_50m + tot_Nox_100m + d_NPRI_PM + d_airport + d_port + d_shore + elevation)
 summary(mts.pool.u10k.full.multi.lm)
 #gives 0.3297
 
 summary(bic.glm(data = filter(mts.data.pool.stan, bc_conc < 10000), bc_conc ~ com_750m + resid_750m + ind_500m + open_50m + mjrd_300m + road_50m + 
-                  d_majrd + bus_50m + inter_50m + traffic_50m + tot_Nox_100m + d_NPRI_PM + d_airport + d_port + d_shore, glm.family = gaussian))
+                  d_majrd + bus_50m + inter_50m + traffic_50m + tot_Nox_100m + d_NPRI_PM + d_airport + d_port + d_shore + elevation, glm.family = gaussian))
+describe(mts.data.pool.stan$elevation)
+#there are missing values for elevation, can't run bic.glm with it. 
 
-#eliminating the highest p values 1 by 1, we have this that has an R2 of 0.3176, compared to the everything that has R2 0.3241
+#eliminating the highest p values 1 by 1, we have this that has an R2 of 0.333, compared to the everything that has R2 0.3241
 summary(lm(data = filter(mts.data.pool.stan, bc_conc < 10000), bc_conc ~ com_750m + resid_750m + mjrd_300m + road_50m + 
-             d_majrd + inter_50m + tot_Nox_100m + d_airport + d_shore))
+             d_majrd + inter_50m + tot_Nox_100m + d_airport + d_shore + elevation))
 #this still has R2 of 0.299
 summary(lm(data = filter(mts.data.pool.stan, bc_conc < 10000), bc_conc ~ resid_750m + road_50m + d_majrd + tot_Nox_100m + d_airport))
 
@@ -5048,7 +5376,7 @@ summary(lm(data = filter(mts.data.pool.stan, bc_conc < 10000), bc_conc ~ d_highw
 #question: traffic_50m has a huge outlier that is actually dampening the relationship. Without it, the relationship is stronger. 
 
 mts.pool.log.o0u13k.lin.variables <- c("build_200m", "com_500m", "resid_750m", "ind_1000m", "open_50m", "mjrd_300m", "road_50m", "d_majrd", "bus_50m", "inter_50m",
-                                 "traffic_50m", "tot_Nox_100m", "d_NPRI_PM", "d_railline", "d_airport", "d_port", "d_shore")
+                                 "traffic_50m", "tot_Nox_100m", "d_NPRI_PM", "d_railline", "d_airport", "d_port", "d_shore", "elevation")
 
 mts.pool.log.o0u13k.nlin.variables <- data.frame(var = c("d_majrd", "d_NPRI_PM"), status = c("together", "together"))
 #d_majrd and d_NPRI_PM not on it's own, use as x + x^2
@@ -5058,9 +5386,9 @@ log.mts.data.pool.stan$logbc <- log(mts.data.pool.stan$bc_conc+1)
 
 mts.pool.log.o0u13k.full.multi.lm <-lm(data = filter(log.mts.data.pool.stan, bc_conc < 10000 & bc_conc > 0), formula = logbc ~ build_200m + com_500m + resid_750m + ind_1000m + 
              open_50m + mjrd_300m + road_50m + d_majrd + bus_50m + inter_50m + traffic_50m + tot_Nox_100m + d_NPRI_PM + 
-             d_railline + d_airport + d_port + d_shore + I(d_majrd^2) + I(d_NPRI_PM^2))
+             d_railline + d_airport + d_port + d_shore + I(d_majrd^2) + I(d_NPRI_PM^2) + elevation)
 summary(mts.pool.log.o0u13k.full.multi.lm)
-#all in gives 0.4257
+#all in gives 0.446
 
 
 summary(lm(data = filter(log.mts.data.pool.stan, bc_conc < 10000 & bc_conc > 0), formula = logbc ~ com_500m + ind_1000m + 
@@ -5605,73 +5933,9 @@ selected_nlin_resid_hist_mts_pool_log_o0u13k_bc <- filter(long.mts.pool.data.sta
 
 
 
-# Investigating interactions of selected variables ########
 
 
-
-######################## MTL Summer, the u4k is the best looking model so far. 
-######Not looking any deeper into MTL Summer for now. It has a low R2 and Montreal Annual is probably more meaningful and interesting. And has a higher R2.
-
-
-# to use step, it's a bit cleaner to separately define the lower and upper limits of model complexity
-#simplest is the intercept only
-m.s.u4k.lower.lm <- lm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ 1)
-#the largest most complex is all and all interactions
-m.s.u4k.upper.lm.2int <- lm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ (build_1000m + mjrd_750m + d_majrd + bus_50m + bus_stop_750m + 
-                                                                                      traffic_750m + tot_traffic_750m + Nox_750m + tot_Nox_750m + 
-                                                                                      d_NPRI_Nox + d_airport)^2)
-#should look for cor(), but not looking at m.s for now. It's not very promissing and m.a is arguably a more informative data set. 
-#now do the step, the k = log(n) is to make it the BIC 
-step(m.s.u4k.lower.lm, scope = list(lower = m.s.u4k.lower.lm, upper = m.s.u4k.upper.lm.2int), direction = "both", k = log(nrow(filter(m.s.data.stan, bc_conc < 4000))))
-#cross check with the bic.blm function, not sure why the above model is actaully the #2 model below. I tried increasing the steps but it didn't work. 
-summary(bic.glm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ build_1000m + mjrd_750m + d_majrd + bus_50m + bus_stop_750m + traffic_750m + 
-                  tot_traffic_750m + Nox_750m + tot_Nox_750m + d_NPRI_Nox + d_airport, glm.family = gaussian))
-#do plain old AIC
-step(m.s.u4k.lower.lm, scope = list(lower = m.s.u4k.lower.lm, upper = m.s.u4k.upper.lm.2int), direction = "both", k = 2)
-#this suggests some interaction terms
-summary(lm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ mjrd_750m + bus_50m + bus_stop_750m + traffic_750m + tot_Nox_750m + tot_traffic_750m + 
-                                                              d_NPRI_Nox + mjrd_750m:d_NPRI_Nox + d_NPRI_Nox:tot_Nox_750m))
-
-#here's the BIC suggested:
-summary(lm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ bus_50m + tot_Nox_750m + d_NPRI_Nox))
-
-
-
-
-####################### MTL Winter
-######Not looking any deeper into MTL Winter for now. It has a low R2 and Montreal Annual is probably more meaningful and interesting.
-
-m.w.lin.variables
-paste(m.w.lin.variables, collapse = ' + ')
-m.w.nlin.variables
-#simplest is the intercept only
-m.w.lower.lm <- lm(data = filter(m.w.data.stan, !is.na(bc_conc)), bc_conc ~ 1)
-#the largest most complex is all and all interactions
-m.w.upper.lm.2int <- lm(data = filter(m.s.data.stan,!is.na(bc_conc)), bc_conc ~ (build_1000m + water_1000m + open_300m + ind_500m + bus_1000m + 
-                                                                                   traffic_1000m + tot_Nox_750m + Nox_1000m + d_woodburn +
-                                                                                   I(d_airport^2) + I(d_NPRI_Nox^2))^2)
-#now do the step, the k = log(n) is to make it the BIC 
-step(m.w.lower.lm, scope = list(lower = m.w.lower.lm, upper = m.w.upper.lm.2int), direction = "both", k = log(nrow(filter(m.w.data.stan, !is.na(bc_conc)))))
-#We get warnings because woodburn has a bunch of NAs. 
-
-#cross check with the bic.blm function, not sure why the above model is actaully the #3 model below or #2 when I remove d_woodburn from above. I tried increasing the steps but it didn't work. 
-summary(bic.glm(data = filter(m.w.data.stan, !is.na(bc_conc)), bc_conc ~ build_1000m + water_1000m + open_300m + ind_500m + bus_1000m + traffic_1000m + tot_Nox_750m + 
-                  Nox_1000m + I(d_airport^2) + I(d_NPRI_Nox^2), glm.family = gaussian))
-#this only works if I take woodburn out
-#do plain old AIC
-step(m.w.lower.lm, scope = list(lower = m.w.lower.lm, upper = m.w.upper.lm.2int), direction = "both", k = 2)
-#not even AIC suggests interaction terms. 
-
-#Here's the BIC suggested model:
-summary(lm(data = filter(m.w.data.stan, !is.na(bc_conc)), bc_conc ~ build_1000m + open_300m + + I(d_airport^2)))
-
-
-
-
-
-
-
-############################ MTL Annual
+############################ MTL Annual u4k Final Model Build (Rem Cor, Step, Ex Intx) ####
 #these are the candidate variables
 m.a.u4k.lin.variables
 paste(m.a.u4k.lin.variables, collapse = ' + ')
@@ -5681,7 +5945,7 @@ m.a.u4k.nlin.variables
 #note spearman was used in the UFP MTL paper
 cor(dplyr::select(dplyr::filter(m.a.data.stan, bc_conc < 4000), build_1000m, mjrd_1000m, bus_stop_200m, traffic_1000m, 
                   tot_Nox_750m, d_NPRI_Nox, d_railline, d_airport, d_shore), method = "spearman")
-?cor()
+
 #mjrd (0.101) and build (0.17), keep build, kick out mjrd
 #traffic (0.08) and mjrd (0.101), mjrd already kicked out, keep traffic
 #tot_Nox_750m (0.187) and traffic_1000m (0.08), tot_Nox is better and better to have, keep it, kick out traffic
@@ -5692,67 +5956,105 @@ m.a.u4k.lin.var.ncor <- m.a.u4k.lin.variables[c(-2, -4)]
 m.a.u4k.nlin.var.ncor <- m.a.u4k.nlin.variables
 length(m.a.u4k.lin.var.ncor)
 #using leaps(), it has a setting for exhaustive search and you can set the criteria to R2
-dplyr::filter(m.a.data.stan, bc_conc < 4000)$bc_conc
-m.a.data.stan$bc_conc
-m.a.u4k.regsubsets.out <- regsubsets(bc_conc ~ (build_1000m + bus_stop_200m + tot_Nox_750m + d_NPRI_Nox + I(d_airport^2) + 
-                                                  d_railline + I(d_shore^2))^2 + I(build_1000m^2) + I(bus_stop_200m^2) + 
-                                      I(tot_Nox_750m^2) + I(d_NPRI_Nox^2) + I(d_railline^2),
-             data = dplyr::filter(m.a.data.stan, bc_conc < 4000),
-             nbest = 1,       # 1 best model for each number of predictors
-             nvmax = length(m.a.u4k.lin.var.ncor),    # the number of non-correlated candidate variables 
-             force.in = NULL, force.out = NULL,      #might consider forcing in a Nox
-             method = "exhaustive")
-m.a.u4k.regsubsets.out
-sum.m.a.u4k.regsubsets.out <- summary(m.a.u4k.regsubsets.out)
-sum.m.a.u4k.regsubsets.out$rsq
-sum.m.a.u4k.regsubsets.out$bic
-sum.m.a.u4k.regsubsets.out$adjr2
-which.max(sum.m.a.u4k.regsubsets.out$adjr2)
-sum.m.a.u4k.regsubsets.out$which[7,]
-sum.m.a.u4k.regsubsets.out$which[4,]
-
-#it kicks out build and bus_stop for tot_Nox_750m:I(d_shore^2) and d_railline:I(d_shore^2)
-plot(m.a.u4k.regsubsets.out, scale = "adjr2", main = "Adjusted R^2")
-
-summary(lm(data = dplyr::filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + I(d_airport^2) + d_railline + I(d_shore^2) + 
-             tot_Nox_750m:I(d_shore^2) + d_railline:I(d_shore^2)))
-#montreal annual with all the candidate variables is R2 = 0.57, the above has R2 = 0.60
-#note: I repeated the regsubsets() with "seqrep" and it gives the same output
 
 
 
+#do an exhaustive search of all variable combinations, (simple effect, 2 way interactions and squared). MTL Annual only has 7 candidate variables, so no need for a supervised step down, my computer can handle it. 
 m.a.u4k.regsubsets.out.7vars.ex <- regsubsets(bc_conc ~ (build_1000m + bus_stop_200m + tot_Nox_750m + d_NPRI_Nox + d_airport + 
                                                   d_railline + d_shore)^2 + I(build_1000m^2) + I(bus_stop_200m^2) + 
                                        I(tot_Nox_750m^2) + I(d_NPRI_Nox^2) + I(d_railline^2) + I(d_airport^2) + I(d_shore^2),
                                      data = dplyr::filter(m.a.data.stan, bc_conc < 4000),
                                      nbest = 1,       # 1 best model for each number of predictors
-                                     nvmax = length(m.a.u4k.lin.var.ncor),    # the number of non-correlated candidate variables 
+                                     nvmax = length(m.a.u4k.lin.var.ncor),    # the number of non-correlated candidate variables, note that the non-linear terms are in this list 
                                      force.in = NULL, force.out = NULL,      #might consider forcing in a Nox
                                      method = "exhaustive")
+#take a look at the outputs
 sum.m.a.u4k.regsubsets.out.7vars.ex <- summary(m.a.u4k.regsubsets.out.7vars.ex)
+#these show the values for the best models of each size (1 to 7)
 sum.m.a.u4k.regsubsets.out.7vars.ex$rsq
 sum.m.a.u4k.regsubsets.out.7vars.ex$bic
 sum.m.a.u4k.regsubsets.out.7vars.ex$adjr2
 which.max(sum.m.a.u4k.regsubsets.out.7vars.ex$adjr2)
 sum.m.a.u4k.regsubsets.out.7vars.ex$which[7,]
+#largest is the best (makes sense). Now just make a data frame that is easier to handle for listing the variables of the best model
 m.a.u4k.7vars.ex <- as.data.frame(sum.m.a.u4k.regsubsets.out.7vars.ex$which[7,])
 m.a.u4k.7vars.ex <- data.frame(Variables = rownames(m.a.u4k.7vars.ex), In = m.a.u4k.7vars.ex$`sum.m.a.u4k.regsubsets.out.7vars.ex$which[7, ]`)
-filter(m.a.u4k.7vars.ex, In == TRUE)
+m.a.u4k.final.model.vars <- dplyr::filter(m.a.u4k.7vars.ex, In == TRUE)$Variables
+paste(m.a.u4k.final.model.vars[-1], collapse = ' + ')
 
-#so if we don't let the squared terms be interaction terms, then it changes
 
-summary(lm(data = dplyr::filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) + I(d_shore^2) + 
-             tot_Nox_750m:d_railline + d_railline:d_shore))
+#nifty plot we can do to see which variables get selected for each R2 outcome. It shows which variables get added for each size of model. 
+plot(m.a.u4k.regsubsets.out.7vars.ex, scale = "adjr2", main = "Adjusted R^2")
+
+
+#all in model without correlated variables. Not interactions. The squared terms are squared. 
+m.a.u4k.simple.ncor.model.lm <- lm(data = dplyr::filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ build_1000m + bus_stop_200m +  
+             tot_Nox_750m + d_NPRI_Nox + d_airport + d_railline + d_shore)
+summary(m.a.u4k.simple.ncor.model.lm)
+
+#final model after exhaustive search of all possible interactions
+m.a.u4k.final.model.lm <- lm(data = dplyr::filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) + 
+             I(d_shore^2) + tot_Nox_750m:d_railline + d_railline:d_shore)
+summary(m.a.u4k.final.model.lm)
+
+
 #much better like this, R2 = 0.657
-#why is it higher? My guess is that in linear uni, there may be a good non-linear component, but in a multi, the linear component is better (ie: it's linear after adjustment). 
+#and they are all p < 0.05
 #Notice how it takes some of the linear and some of the nono-linear, whichever is best in the whole model. 
 #Notice it takes d_railline only in interactions, not by itself.
 
 
 
 
-######we could also use an algorithm to step to it. . 
+#####MTL Annual u4k Assumptions and Cross Validation #######
+#quick hist of residuals, qq plot, resids vs fitted
+#simple multi
+hist(m.a.u4k.simple.ncor.model.lm$residuals, main = "7 var Montreal Model")
+qqnorm(residuals(m.a.u4k.simple.ncor.model.lm), ylab = "Residuals", main = "Q-Q Plot 7 var Montreal Model")
+qqline(residuals(m.a.u4k.simple.ncor.model.lm))
+plot(fitted(m.a.u4k.simple.ncor.model.lm), residuals(m.a.u4k.simple.ncor.model.lm), main = "7 var Montreal Model")
+abline(h=0)
+#all interactions
+hist(m.a.u4k.final.model.lm$residuals, main = "7 var Montreal Model with Intx and ^2")
+qqnorm(residuals(m.a.u4k.final.model.lm), ylab = "Residuals", main = "Q-Q Plot 7 var Montreal Model with Intx and ^2")
+qqline(residuals(m.a.u4k.final.model.lm))
+plot(fitted(m.a.u4k.final.model.lm), residuals(m.a.u4k.final.model.lm), main = "7 var Montreal Model with Intx and ^2")
+abline(h=0)
+#second is better than the first
 
+#look at Cook's D
+plot(cooks.distance(m.a.u4k.final.model.lm))
+#max is about 0.2, that's goooood. People often use 1 as the threshold
+#take a look at Cook's D for simpler/basic model
+plot(cooks.distance(m.a.u4k.simple.ncor.model.lm))
+#also good, nothing over 0.2. Montreal Annual is doing well. 
+
+
+m.a.u4k.train.control <- trainControl(method = "LOOCV")
+
+m.a.u4k.simple.ncor.model.caret <- train(bc_conc ~ build_1000m + mjrd_1000m + bus_stop_200m + traffic_1000m + 
+                                           tot_Nox_750m + d_NPRI_Nox + d_airport + d_railline + d_shore,   # model to fit
+                                   data = dplyr::filter(m.a.data.stan, bc_conc < 4000),                        
+                                   trControl = m.a.u4k.train.control,              # folds
+                                   method = "glm"                      # specifying regression model
+                                   )
+m.a.u4k.simple.ncor.model.caret
+#R2 drops 0.19
+
+m.a.u4k.final.model.caret <- train(bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) + I(d_shore^2) + 
+                               tot_Nox_750m:d_railline + d_railline:d_shore,   # model to fit
+                     data = dplyr::filter(m.a.data.stan, bc_conc < 4000),                        
+                     trControl = m.a.u4k.train.control,              # folds
+                     method = "glm"                      # specifying regression model
+                     )
+m.a.u4k.final.model.caret
+#R2 drops 0.13, suggesting the interactions might be slightly less overfit. 
+
+
+
+
+######we could also use an algorithm to step to it for model selection. 
+###this is dead for now. Not persuing it. 
 #from something I found online on how to do step(), you need to tell it the simplest and most complicated models you want it to look at
 #simplest is the intercept only
 m.a.u4k.lower.lm <- lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ 1)
@@ -5780,7 +6082,7 @@ summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ tot_Nox_750m 
 
 
 
-############ TO SUMMER, the < 10k has the highest R2. 
+############ TO SUMMER u10k Final Model Build (Rem Cor, Step, Ex Intx) ####
 to.u10k.lin.variables
 paste(to.u10k.lin.variables, collapse = ' + ')
 to.u10k.nlin.variables
@@ -5803,7 +6105,185 @@ to.u10k.lin.variables
 to.u10k.lin.var.ncor <- to.u10k.lin.variables[c(-6, -7, -9, -10, -12, -13, -14)]
 to.u10k.nlin.var.ncor <- to.u10k.nlin.variables
 length(to.u10k.lin.var.ncor)
+paste(to.u10k.lin.var.ncor, collapse = ' + ')
 
+
+#need to get it down to 8 variables or else I don't have enough computing power. 
+#I did it supervised, taking out the highest p value and making sure the RMSE went down. It did for each. 
+#all
+summary(lm(data = filter(t.s.data.stan, bc_conc < 10000), 
+           bc_conc ~ build_200m + com_750m + resid_100m + ind_1000m + open_50m + mjrd_100m + road_50m + d_highway + 
+             d_majrd + bus_50m + inter_50m + traffic_100m + tot_traffic_100m + tot_Nox_100m + Nox_50m + d_NPRI_PM + d_airport +
+             rail_1000m + I(d_NPRI_PM^2)))
+#corr removed
+summary(lm(data = filter(t.s.data.stan, bc_conc < 10000), 
+           bc_conc ~ build_200m + com_750m + resid_100m + ind_1000m + open_50m + d_highway + inter_50m + Nox_50m + 
+             d_NPRI_PM + I(d_NPRI_PM^2) + d_airport + rail_1000m))
+#results of supervised step down. Each time I removed largest p value and made sure RMSE went down. It did and I stopped at this model:
+summary(lm(data = dplyr::filter(t.s.data.stan, bc_conc < 10000), 
+           bc_conc ~ com_750m + resid_100m + ind_1000m + d_highway + inter_50m + Nox_50m + 
+             d_NPRI_PM + d_airport))
+
+#checked to see if exhaustive would get me to the same place. It does! 
+summary(regsubsets(bc_conc ~ build_200m + com_750m + resid_100m + ind_1000m + open_50m + d_highway + inter_50m + Nox_50m + 
+                     d_NPRI_PM + I(d_NPRI_PM^2) + d_airport + rail_1000m,
+                   data = dplyr::filter(t.s.data.stan, bc_conc < 10000),
+                   nbest = 1,       # 1 best model for each number of predictors
+                   nvmax = 8,    # the number of non-correlated candidate variables 
+                   force.in = NULL, force.out = NULL,      #might consider forcing in a Nox
+                   method = "exhaustive",
+                   really.big = F         #this needs to be set to T for a large one such as this. Not sure how long it will take.
+                   ))
+#now do an exhaustive search on all combinations of the remaining 8 variables
+to.u10k.regsubsets.out.8vars.ex <- regsubsets(bc_conc ~ (com_750m + resid_100m + ind_1000m + d_highway + inter_50m + Nox_50m + d_NPRI_PM + d_airport)^2 +
+                     I(com_750m^2) + I(resid_100m^2) + I(ind_1000m^2) + I(d_highway^2) + I(inter_50m^2) + I(Nox_50m^2) + I(d_NPRI_PM^2) + I(d_airport^2),
+                   data = dplyr::filter(t.s.data.stan, bc_conc < 10000),
+                   nbest = 1,       # 1 best model for each number of predictors
+                   nvmax = 8,    # the number of non-correlated candidate variables 
+                   force.in = NULL, force.out = NULL,      #might consider forcing in a Nox
+                   method = "exhaustive",
+                   really.big = F         #this needs to be set to T for a large one such as this. Not sure how long it will take.
+                   )
+#take a look at the outputs
+sum.to.u10k.regsubsets.out.8vars.ex <- summary(to.u10k.regsubsets.out.8vars.ex)
+#see the values for each of the best models of their size
+sum.to.u10k.regsubsets.out.8vars.ex$rsq
+sum.to.u10k.regsubsets.out.8vars.ex$adjr2
+sum.to.u10k.regsubsets.out.8vars.ex$bic
+which.max(sum.to.u10k.regsubsets.out.8vars.ex$adjr2)
+sum.to.u10k.regsubsets.out.8vars.ex$which[8,]
+#put into data frame to make easier
+to.u10k.8vars.ex <- as.data.frame(sum.to.u10k.regsubsets.out.8vars.ex$which[8,])
+to.u10k.8vars.ex <- data.frame(Variables = rownames(to.u10k.8vars.ex), In = to.u10k.8vars.ex$`sum.to.u10k.regsubsets.out.8vars.ex$which[8, ]`)
+t.s.u10k.final.model.vars <- dplyr::filter(to.u10k.8vars.ex, In == TRUE)$Variables
+paste(t.s.u10k.final.model.vars[-1], collapse = ' + ')
+
+#nifty plot we can do to see which variables get selected for each R2 outcome. It shows which variables get added for each size of model. 
+plot(to.u10k.regsubsets.out.8vars.ex, scale = "adjr2", main = "Adjusted R^2")
+
+
+#so the three models are:
+#all candidates (after removing corr)
+t.s.u10k.simple.all.ncor.model.lm <- lm(data = dplyr::filter(t.s.data.stan, bc_conc < 10000), 
+           bc_conc ~ build_200m + com_750m + resid_100m + ind_1000m + open_50m + d_highway + inter_50m + Nox_50m + 
+             d_NPRI_PM + d_airport + rail_1000m)
+summary(t.s.u10k.simple.all.ncor.model.lm)
+
+#down to 8 after backwars stepwise
+t.s.u10k.simple.8vars.ncor.model.lm <- lm(data = dplyr::filter(t.s.data.stan, bc_conc < 10000), 
+           bc_conc ~ com_750m + resid_100m + ind_1000m + d_highway + inter_50m + Nox_50m + 
+             d_NPRI_PM + d_airport)
+summary(t.s.u10k.simple.8vars.ncor.model.lm)
+
+#interactions and squared from ex.
+t.s.u10k.final.model.lm <- lm(data = dplyr::filter(t.s.data.stan, bc_conc < 10000), 
+           bc_conc ~ Nox_50m + com_750m:resid_100m + com_750m:ind_1000m + com_750m:d_airport + resid_100m:ind_1000m + 
+             resid_100m:d_NPRI_PM + ind_1000m:d_NPRI_PM + Nox_50m:d_NPRI_PM)
+summary(t.s.u10k.final.model.lm)
+
+
+#also look at Cook's D
+plot(cooks.distance(t.s.u10k.final.model.lm))
+text(cooks.distance(t.s.u10k.final.model.lm), labels = as.character(filter(t.s.data.stan, bc_conc < 10000)[,1]), pos = 4)
+#two points up around 0.6, so less beautifull than Montreal Annual, but still pretty good because under 1?
+which.max(cooks.distance(t.s.u10k.final.model.lm))
+#it's observations 23 and 26 that are th biggies. 
+filter(t.s.data.stan, f.id == "TO_space_127")
+
+
+summary(lm(data = dplyr::filter(t.s.data.stan, bc_conc < 10000 & f.id != "TO_space_130" & f.id != "TO_space_130"), 
+                              bc_conc ~ Nox_50m + com_750m:resid_100m + com_750m:ind_1000m + com_750m:d_airport + resid_100m:ind_1000m + 
+                                resid_100m:d_NPRI_PM + ind_1000m:d_NPRI_PM + Nox_50m:d_NPRI_PM))
+#remove both points and the biggest changes are: ind_1000m:d_NPRI_PM (371 to 310, 17%) and com_750m:resid_100m (-631 to -518, 18%),   
+#remove 127 and the biggest are: resid_100m:ind_1000m (-525 to -651, 20%) and Nox_50m:d_NPRI_PM (488 to 543, 11%) and ind_1000m:d_NPRI_PM  (371 to 327, 12%)
+#remove 130 and the biggest are:  com_750m:resid_100m (-631 to -486, 23%) and com_750m:ind_1000m  (-975 to -1111, 13%) and com_750m:d_airport (-450 to -377, 17%) (some others look like big changes but are less than 15%)
+#so what? I think we're okay. 
+
+#look basic model?
+plot(cooks.distance(t.s.u10k.simple.all.ncor.model.lm))
+text(cooks.distance(t.s.u10k.simple.all.ncor.model.lm), labels = as.character(filter(t.s.data.stan, bc_conc < 10000)[,1]), pos = 4)
+#it's only TO_space_107 that is high, and it's less than 0.3
+#I think this is stronger evidencve that I don't need to worry about it. I don't think we have any overly influencial observations 
+
+#####TO Summer Cross Validation #######
+#quick hist of residuals, qq plots, and resids vs fitted
+#toronto simple multi models
+hist(t.s.u10k.simple.all.ncor.model.lm$residuals, main = "11 var Toronto Model")
+qqnorm(residuals(t.s.u10k.simple.all.ncor.model.lm), ylab = "Residuals", main = "Q-Q Plot 11 var Toronto Model")
+qqline(residuals(t.s.u10k.simple.all.ncor.model.lm))
+plot(fitted(t.s.u10k.simple.all.ncor.model.lm), residuals(t.s.u10k.simple.all.ncor.model.lm), main = "11 var Toronto Model")
+abline(h=0)
+hist(t.s.u10k.simple.8vars.ncor.model.lm$residuals, main = "8 var Toronto Model")
+qqnorm(residuals(t.s.u10k.simple.8vars.ncor.model.lm), ylab = "Residuals", main = "Q-Q Plot 8 var Toronto Model")
+qqline(residuals(t.s.u10k.simple.8vars.ncor.model.lm))
+plot(fitted(t.s.u10k.simple.8vars.ncor.model.lm), residuals(t.s.u10k.simple.8vars.ncor.model.lm), main = "8 var Toronto Model")
+abline(h=0)
+
+#Toronto all interactions, final model
+hist(t.s.u10k.final.model.lm$residuals, main = "8 var Toronto Model with Intx and ^2")
+qqnorm(residuals(t.s.u10k.final.model.lm), ylab = "Residuals", main = "Q-Q Plot 8 var Toronto Model with Intx and ^2")
+qqline(residuals(t.s.u10k.final.model.lm))
+plot(fitted(t.s.u10k.final.model.lm), residuals(t.s.u10k.final.model.lm), main = "8 var Toronto Model with Intx and ^2")
+abline(h=0)
+#those four points, bad predictions. Other than that, the final model looks good. Better than the simple multis
+
+t.s.u10k.train.control <- trainControl(method = "LOOCV")
+
+t.s.u10k.simple.all.ncor.model.caret <- train(bc_conc ~ build_200m + com_750m + resid_100m + ind_1000m + open_50m + d_highway + inter_50m + Nox_50m + 
+                                                d_NPRI_PM + d_airport + rail_1000m,   # model to fit
+                                         data = dplyr::filter(t.s.data.stan, bc_conc < 10000),                       
+                                         trControl = t.s.u10k.train.control,              # folds
+                                         method = "glm"                      # specifying regression model
+                                         )
+t.s.u10k.simple.all.ncor.model.caret
+#R2 drops 0.13
+
+
+t.s.u10k.simple.8vars.ncor.model.caret <- train(bc_conc ~ com_750m + resid_100m + ind_1000m + d_highway + inter_50m + Nox_50m + 
+                                                  d_NPRI_PM + d_airport,   # model to fit
+                                              data = dplyr::filter(t.s.data.stan, bc_conc < 10000),                       
+                                              trControl = t.s.u10k.train.control,              # folds
+                                              method = "glm"                      # specifying regression model
+                                              )
+t.s.u10k.simple.8vars.ncor.model.caret
+#drops 0.08, suggests that the suppervised backwards steps helped reduce overfitting
+
+t.s.u10k.final.model.caret <- train(bc_conc ~ Nox_50m + com_750m:resid_100m + com_750m:ind_1000m + com_750m:d_airport + resid_100m:ind_1000m + 
+                                      resid_100m:d_NPRI_PM + ind_1000m:d_NPRI_PM + Nox_50m:d_NPRI_PM,   # model to fit
+                                                data = dplyr::filter(t.s.data.stan, bc_conc < 10000),                       
+                                                trControl = t.s.u10k.train.control,              # folds
+                                                method = "glm"                      # specifying regression model
+                                                )
+t.s.u10k.final.model.caret
+#drops 0.10
+
+
+
+
+#tried a couple of other LOOCVs before I got caret working. Not sure if there is potential. There is that one nifty graph. Keep hidden for now.  
+library(DAAG)
+library(boot)
+boot.cv <- glm(data = dplyr::filter(t.s.data.stan, bc_conc < 10000), bc_conc ~ com_750m + resid_100m + ind_1000m + d_highway + inter_50m + Nox_50m + 
+       d_NPRI_PM + d_airport, family = gaussian)
+cv.glm(data = dplyr::filter(t.s.data.stan, bc_conc < 10000), glmfit = boot.cv)
+#I think the "delta" output is the MSE
+
+cv.lm(data = dplyr::filter(t.s.data.stan, bc_conc < 10000), bc_conc ~ com_750m + resid_100m + ind_1000m + d_highway + inter_50m + Nox_50m + 
+        d_NPRI_PM + d_airport)
+
+
+#this one does a nice looking plot.....that I don't totally understand just yet. I think it's plotting the predicted vs observed for the 3 folds (ie: three subsets of data)
+#changed it to 10 folds. It gives the MSE, so sqrt(ms) to get RMSE. 
+CVlm(data = dplyr::filter(t.s.data.stan, bc_conc < 10000), form.lm = bc_conc ~ com_750m + resid_100m + ind_1000m + d_highway + inter_50m + Nox_50m + 
+        d_NPRI_PM + d_airport, m = 10)
+
+CVlm(data = dplyr::filter(t.s.data.stan, bc_conc < 10000), form.lm = bc_conc ~ Nox_50m + com_750m:resid_100m + com_750m:ind_1000m + com_750m:d_airport + resid_100m:ind_1000m + 
+       resid_100m:d_NPRI_PM + ind_1000m:d_NPRI_PM + Nox_50m:d_NPRI_PM, m = 10)
+?CVlm
+
+
+##### a bunch more with leaps, but not useful for now. It was exploratory before deciding on a supervised backwards stepwise
+#not looking at this any more
 
 #too slow with all in, some a(with lowest uni R2 are removed). Check before running. Make sure really.big = F before runniung, then consider changing to T
 to.u10k.regsubsets.out.9vars.ex <- regsubsets(bc_conc ~ (build_200m + com_750m + resid_100m + ind_1000m + open_50m + d_highway + 
@@ -5841,7 +6321,7 @@ to.u10k.regsubsets.out.9vars.seqrep <- regsubsets(bc_conc ~ (build_200m + com_75
                                               nbest = 1,       # 1 best model for each number of predictors
                                               nvmax = (length(to.u10k.lin.var.ncor) - 2),    # the number of non-correlated candidate variables 
                                               force.in = NULL, force.out = NULL,      #might consider forcing in a Nox
-                                              method = "seqrep",
+                                              method = "backward",
                                               really.big = F         #this needs to be set to T for a large one such as this. Not sure how long it will take.
 )
 sum.to.u10k.regsubsets.out.9vars.seqrep <- summary(to.u10k.regsubsets.out.9vars.seqrep)
@@ -5862,7 +6342,7 @@ to.u10k.regsubsets.out.11vars.seqrep <- regsubsets(bc_conc ~ (build_200m + com_7
                                         nbest = 1,       # 1 best model for each number of predictors
                                         nvmax = (length(to.u10k.lin.var.ncor) - 0),    # the number of non-correlated candidate variables 
                                         force.in = NULL, force.out = NULL,      #might consider forcing in a Nox
-                                        method = "seqrep",
+                                        method = "backward",
                                         really.big = F         #this needs to be set to T for a large one such as this. Not sure how long it will take.
                                         )
 sum.to.u10k.regsubsets.out.11vars.seqrep <- summary(to.u10k.regsubsets.out.11vars.seqrep)
@@ -5878,6 +6358,23 @@ paste(filter(to.u10k.11vars.seqrep, In == TRUE)$Variables, collapse = ' + ')
 
 
 
+#Mannually checking the ones that look bad, pull out rail_1000m and build_200m, gets the RMSE to go down for each one. 
+summary(lm(data = dplyr::filter(mark.t.s.data.stan, bc_conc < 10000), bc_conc ~  com_750m + resid_100m + ind_1000m + 
+              d_highway + inter_50m + Nox_50m + d_NPRI_PM + d_airport))
+
+to.u10k.regsubsets.out.9vars.ma.ex <- regsubsets(bc_conc ~ (com_750m + resid_100m + ind_1000m + d_highway + inter_50m +
+                                                                Nox_50m + d_NPRI_PM + d_airport)^2 + 
+                                                     I(com_750m^2) + I(resid_100m^2) + I(ind_1000m^2) + 
+                                                     I(d_highway^2) + I(inter_50m^2) + I(Nox_50m^2) + I(d_airport^2) + I(d_NPRI_PM^2),
+                                                   data = dplyr::filter(t.s.data.stan, bc_conc < 10000),
+                                                   nbest = 1,       # 1 best model for each number of predictors
+                                                   nvmax = 9,    # the number of non-correlated candidate variables 
+                                                   force.in = NULL, force.out = NULL,      #might consider forcing in a Nox
+                                                   method = "exhaustive",
+                                                   really.big = F         #this needs to be set to T for a large one such as this. Not sure how long it will take.
+                                                 )
+sum.to.u10k.regsubsets.out.9vars.ma.ex <- summary(to.u10k.regsubsets.out.9vars.ma.ex)
+sum.to.u10k.regsubsets.out.9vars.ma.ex$which[9,]
 
 #######If we want to do algorithm. 
 
@@ -5907,11 +6404,59 @@ summary(lm(data = filter(t.s.data.stan, bc_conc < 10000), bc_conc ~ Nox_50m + in
 summary(lm(data = filter(t.s.data.stan, bc_conc < 10000), bc_conc ~ Nox_50m + ind_1000m + com_750m))
 
 
+######################## MTL Summer, the u4k is the best looking model so far. 
+######Not looking any deeper into MTL Summer for now. It has a low R2 and Montreal Annual is probably more meaningful and interesting. And has a higher R2.
 
 
+# to use step, it's a bit cleaner to separately define the lower and upper limits of model complexity
+#simplest is the intercept only
+m.s.u4k.lower.lm <- lm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ 1)
+#the largest most complex is all and all interactions
+m.s.u4k.upper.lm.2int <- lm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ (build_1000m + mjrd_750m + d_majrd + bus_50m + bus_stop_750m + 
+                                                                                       traffic_750m + tot_traffic_750m + Nox_750m + tot_Nox_750m + 
+                                                                                       d_NPRI_Nox + d_airport)^2)
+#should look for cor(), but not looking at m.s for now. It's not very promissing and m.a is arguably a more informative data set. 
+#now do the step, the k = log(n) is to make it the BIC 
+step(m.s.u4k.lower.lm, scope = list(lower = m.s.u4k.lower.lm, upper = m.s.u4k.upper.lm.2int), direction = "both", k = log(nrow(filter(m.s.data.stan, bc_conc < 4000))))
+#cross check with the bic.blm function, not sure why the above model is actaully the #2 model below. I tried increasing the steps but it didn't work. 
+summary(bic.glm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ build_1000m + mjrd_750m + d_majrd + bus_50m + bus_stop_750m + traffic_750m + 
+                  tot_traffic_750m + Nox_750m + tot_Nox_750m + d_NPRI_Nox + d_airport, glm.family = gaussian))
+#do plain old AIC
+step(m.s.u4k.lower.lm, scope = list(lower = m.s.u4k.lower.lm, upper = m.s.u4k.upper.lm.2int), direction = "both", k = 2)
+#this suggests some interaction terms
+summary(lm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ mjrd_750m + bus_50m + bus_stop_750m + traffic_750m + tot_Nox_750m + tot_traffic_750m + 
+             d_NPRI_Nox + mjrd_750m:d_NPRI_Nox + d_NPRI_Nox:tot_Nox_750m))
+
+#here's the BIC suggested:
+summary(lm(data = filter(m.s.data.stan, bc_conc < 4000), bc_conc ~ bus_50m + tot_Nox_750m + d_NPRI_Nox))
 
 
+####################### MTL Winter
+######Not looking any deeper into MTL Winter for now. It has a low R2 and Montreal Annual is probably more meaningful and interesting.
 
+m.w.lin.variables
+paste(m.w.lin.variables, collapse = ' + ')
+m.w.nlin.variables
+#simplest is the intercept only
+m.w.lower.lm <- lm(data = filter(m.w.data.stan, !is.na(bc_conc)), bc_conc ~ 1)
+#the largest most complex is all and all interactions
+m.w.upper.lm.2int <- lm(data = filter(m.s.data.stan,!is.na(bc_conc)), bc_conc ~ (build_1000m + water_1000m + open_300m + ind_500m + bus_1000m + 
+                                                                                   traffic_1000m + tot_Nox_750m + Nox_1000m + d_woodburn +
+                                                                                   I(d_airport^2) + I(d_NPRI_Nox^2))^2)
+#now do the step, the k = log(n) is to make it the BIC 
+step(m.w.lower.lm, scope = list(lower = m.w.lower.lm, upper = m.w.upper.lm.2int), direction = "both", k = log(nrow(filter(m.w.data.stan, !is.na(bc_conc)))))
+#We get warnings because woodburn has a bunch of NAs. 
+
+#cross check with the bic.blm function, not sure why the above model is actaully the #3 model below or #2 when I remove d_woodburn from above. I tried increasing the steps but it didn't work. 
+summary(bic.glm(data = filter(m.w.data.stan, !is.na(bc_conc)), bc_conc ~ build_1000m + water_1000m + open_300m + ind_500m + bus_1000m + traffic_1000m + tot_Nox_750m + 
+                  Nox_1000m + I(d_airport^2) + I(d_NPRI_Nox^2), glm.family = gaussian))
+#this only works if I take woodburn out
+#do plain old AIC
+step(m.w.lower.lm, scope = list(lower = m.w.lower.lm, upper = m.w.upper.lm.2int), direction = "both", k = 2)
+#not even AIC suggests interaction terms. 
+
+#Here's the BIC suggested model:
+summary(lm(data = dplyr::filter(m.w.data.stan, !is.na(bc_conc)), bc_conc ~ build_1000m + open_300m + + I(d_airport^2)))
 
 
 ###########TO SUMMER log  100 < BC < 10,000
@@ -5944,22 +6489,19 @@ summary(lm(data = filter(t.s.data.stan, bc_conc < 10000), bc_conc ~ Nox_50m + in
 
 
 
-
-
-
-
-
-
 ################## MTL + TO SUMMER POOLED, Residuals are good enough for plain old linear u10k. 
+#####Not looking at this any more for now.
 mts.pool.u10k.lin.variables
 paste(mts.pool.u10k.lin.variables, collapse = ' + ')
 mts.pool.u10k.nlin.variables
 
 #check for correlations
 formattable(cor(dplyr::select(filter(mts.data.pool.stan, bc_conc < 10000), build_200m, com_750m, resid_750m, ind_500m, open_50m, mjrd_300m, road_50m, 
-                              d_majrd, bus_50m, inter_50m, traffic_50m, tot_Nox_100m, d_NPRI_PM, d_airport, d_port, d_shore
+                              d_majrd, bus_50m, inter_50m, traffic_50m, tot_Nox_100m, d_NPRI_PM, d_airport, d_port, d_shore, elevation
                               ), method = "spearman")
             )
+
+str(mts.data.pool.stan[,150:161])
 #d_majrd (0.08) and majrd (0.14), keep majrd and kickk out d_majrd
 #tot_Nox (0.1344) and traffic (0.0367), keep tot_Nox, kick out traffic
 mts.pool.u10k.lin.var.ncor <- mts.pool.u10k.lin.variables[c(-8, -11)]
@@ -5967,7 +6509,29 @@ mts.pool.u10k.nlin.var.ncor <- mts.pool.u10k.nlin.variables
 length(mts.pool.u10k.lin.var.ncor)
 
 
-#it's too slow to run ecxhaustive of 
+#need to get it down to 8 variables or else I don't have enough computing power. 
+#I did it supervised, taking out the highest p value and making sure the RMSE went down. It did for each. 
+summary(lm(data = filter(mts.data.pool.stan, bc_conc < 10000), 
+           bc_conc ~ com_750m + resid_750m + road_50m + d_majrd + inter_50m + 
+             tot_Nox_100m + d_airport + d_shore + elevation))
+#checked to see if exhaustive would get me to the same place. It does! Note, force in city and make nvmax 9, so city + 8 variables
+#thought? should I let city be an interaction term?
+#redid this with elevation in. That messes it up a bit since there are quite a few NAs
+
+summary(regsubsets(bc_conc ~ city + build_200m + com_750m + resid_750m + ind_500m + open_50m + mjrd_300m + road_50m + bus_50m + inter_50m + 
+             tot_Nox_100m + d_NPRI_PM + d_airport + d_port + d_shore + elevation,
+           data = dplyr::filter(mts.data.pool.stan, bc_conc < 10000),
+           nbest = 1,       # 1 best model for each number of predictors
+           nvmax = 9,    # the number of non-correlated candidate variables 
+           force.in = 1, force.out = NULL,      #might consider forcing in a Nox. Force in City for pooled
+           method = "exhaustive",
+           really.big = F         #this needs to be set to T for a large one such as this. Not sure how long it will take.
+           ))
+#if city is forced in, elevation doesn't make the cut. If city is taken out, then elevation makes it in. 
+
+
+###Here's from when I was first trying the regsubsets. This hits a wall when using more than 9 variables, too computationally intensive. 
+#it's too slow to run exhaustive of 
 mts.pool.u10k.regsubsets.out.9vars.ex <- regsubsets(bc_conc ~ (ind_500m + mjrd_300m + road_50m + bus_50m + 
                                               inter_50m + tot_Nox_100m + d_airport + d_port + d_shore)^2 + 
                                                 I(ind_500m^2) + I(mjrd_300m^2) + I(road_50m^2) + I(bus_50m^2) + 
@@ -5998,7 +6562,25 @@ filter(mts.pool.u10k.9vars.ex, In == TRUE)
 plot(mts.pool.u10k.regsubsets.out.9vars.ex, scale = "adjr2", main = "Adjusted R^2")
 
 #if we want algorithms n steps instead of exhaustive
-
+?regsubsets
+mts.pool.u10k.regsubsets.out.9vars.seqrep <- regsubsets(bc_conc ~ (ind_500m + mjrd_300m + road_50m + bus_50m + 
+                                                                 inter_50m + tot_Nox_100m + d_airport + d_port + d_shore)^2 + 
+                                                      I(ind_500m^2) + I(mjrd_300m^2) + I(road_50m^2) + I(bus_50m^2) + 
+                                                      I(inter_50m^2) + I(tot_Nox_100m^2) + I(d_airport^2) + I(d_port^2) + I(d_shore^2),
+                                                    data = dplyr::filter(mts.data.pool.stan, bc_conc < 10000),
+                                                    nbest = 1,       # 1 best model for each number of predictors
+                                                    nvmax = (length(mts.pool.u10k.lin.var.ncor) - 5),    # the number of non-correlated candidate variables 
+                                                    force.in = NULL, force.out = NULL,      #might consider forcing in a Nox
+                                                    method = "backward",
+                                                    really.big = F         #this needs to be set to T for a large one such as this. Not sure how long it will take.
+                                                    )
+sum.mts.pool.u10k.regsubsets.out.9vars.seqrep <- summary(mts.pool.u10k.regsubsets.out.9vars.seqrep)
+sum.mts.pool.u10k.regsubsets.out.9vars.seqrep$adjr2
+which.max(sum.mts.pool.u10k.regsubsets.out.9vars.seqrep$adjr2)
+sum.mts.pool.u10k.regsubsets.out.9vars.seqrep$which[9,]
+mts.pool.u10k.9vars.ex <- as.data.frame(sum.to.u10k.regsubsets.out.9vars.ex$which[9,])
+mts.pool.u10k.9vars.ex <- data.frame(Variables = rownames(mts.pool.u10k.9vars.ex), In = mts.pool.u10k.9vars.ex$`sum.to.u10k.regsubsets.out.9vars.ex$which[9, ]`)
+filter(mts.pool.u10k.9vars.ex, In == TRUE)
 
 
 
@@ -6028,11 +6610,9 @@ summary(lm(data = filter(mts.data.pool.stan, bc_conc < 10000), bc_conc ~ city + 
 
 
 
-
-
-
-
 ################## MTL + TO SUMMER POOLED, the log 0 < BC < 13k is the best looking one. 
+#####Not looking at this anymore for now. 
+
 mts.pool.log.o0u13k.lin.variables
 paste(mts.pool.log.o0u13k.lin.variables, collapse = ' + ')
 mts.pool.log.o0u13k.nlin.variables
@@ -6095,7 +6675,408 @@ formattable(cor(dplyr::select(filter(log.mts.data.pool.stan,  bc_conc < 13000 & 
 
 
 
+### Final Model Tables ####
+library(stargazer)
+stargazer(m.a.u4k.simple.ncor.model.lm, m.a.u4k.final.model.lm, t.s.u10k.simple.all.ncor.model.lm, t.s.u10k.simple.8vars.ncor.model.lm, t.s.u10k.final.model.lm, ci = TRUE, ci.level = 0.95, type =  "text")
+?stargazer
 
+library(sjPlot)
+library(sjmisc)
+library(sjlabelled)
+
+tab_model(m.a.u4k.final.model.lm)
+
+#put the two MTL models in same table. I like having the non-interaction model because it's easier to interpret. It also shows how interactions improve the model and the LOOCV performance
+#This is the same table format as the MTL UFP paper article
+m.a.2.model.sum <- m.a.u4k.simple.ncor.model.lm %>%
+  tidy() %>%
+  transmute(.rownames = term, estimate = estimate) %>%
+  left_join(tidy(confint(m.a.u4k.simple.ncor.model.lm, level = 0.95)), by = ".rownames") %>%
+  transmute("Independent variables" = .rownames, "Effect estimate (95% CI)" = paste(round(estimate, 2), " (", round(X2.5.., 2), ", ", round(X97.5.., 2), ")", sep = "")) %>%
+  bind_rows(., m.a.u4k.final.model.lm %>%
+              tidy() %>%
+              transmute(.rownames = term, estimate = estimate) %>%
+              left_join(tidy(confint(m.a.u4k.final.model.lm, level = 0.95)), by = ".rownames") %>%
+              transmute("Independent variables" = .rownames, "Effect estimate (95% CI)" = paste(round(estimate, 2), " (", round(X2.5.., 2), ", ", round(X97.5.., 2), ")", sep = ""))
+            ) %>%
+  transmute("Independent variables" = `Independent variables` %>% gsub("^NPRI_", "NPRI.", .) %>%
+            gsub("tot_", "total ", .) %>%
+            gsub("d_", "dist. to ", .) %>%
+            gsub("^I", "", .) %>%
+            gsub("2)", "2", .) %>%
+            gsub("nox", "NOx", .) %>%
+            gsub("Nox", "NOx", .), 
+          "Effect estimate (95% CI)" = `Effect estimate (95% CI)`)
+
+write.csv(m.a.2.model.sum, "Paper Tables/m.a.2.model.sum.csv")
+
+#here's extra stuff about models to put into tables. Doesn't fit very nice into data.frame.
+#no interactions
+c(glance(m.a.u4k.simple.ncor.model.lm)[1:2], RMSE = sqrt(glance(m.a.u4k.simple.ncor.model.lm)[10]/nrow(filter(m.a.data.stan, bc_conc < 4000))), MaxCookD = max(cooks.distance(m.a.u4k.simple.ncor.model.lm)))
+m.a.u4k.simple.ncor.model.caret
+#final with interactions
+c(glance(m.a.u4k.final.model.lm)[1:2], RMSE = sqrt(glance(m.a.u4k.final.model.lm)[10]/nrow(filter(m.a.data.stan, bc_conc < 4000))), MaxCookD = max(cooks.distance(m.a.u4k.final.model.lm)))
+m.a.u4k.final.model.caret
+#just to confirm the by hand is correct. 
+RMSE(filter(m.a.data.stan, bc_conc < 4000)$bc_conc, predict(m.a.u4k.final.model.lm))
+#it is. 
+
+
+#for tononto. For now, this is only the two 8 variable models. I don't think I should bother putting in the 11 variable one. 
+t.s.u10k.final.model.lm
+t.s.u10k.simple.8vars.ncor.model.lm
+t.s.2.model.sum <- t.s.u10k.simple.8vars.ncor.model.lm %>%
+  tidy() %>%
+  transmute(.rownames = term, estimate = estimate) %>%
+  left_join(tidy(confint(t.s.u10k.simple.8vars.ncor.model.lm, level = 0.95)), by = ".rownames") %>%
+  transmute("Independent variables" = .rownames, "Effect estimate (95% CI)" = paste(round(estimate, 2), " (", round(X2.5.., 2), ", ", round(X97.5.., 2), ")", sep = "")) %>%
+  bind_rows(., t.s.u10k.final.model.lm %>%
+              tidy() %>%
+              transmute(.rownames = term, estimate = estimate) %>%
+              left_join(tidy(confint(t.s.u10k.final.model.lm, level = 0.95)), by = ".rownames") %>%
+              transmute("Independent variables" = .rownames, "Effect estimate (95% CI)" = paste(round(estimate, 2), " (", round(X2.5.., 2), ", ", round(X97.5.., 2), ")", sep = ""))
+  ) %>%
+  transmute("Independent variables" = `Independent variables` %>% gsub("^NPRI_", "NPRI.", .) %>%
+              gsub("tot_", "total ", .) %>%
+              gsub("^I", "", .) %>%
+              gsub("2)", "2", .) %>%
+              gsub("nox", "NOx", .) %>%
+              gsub("Nox", "NOx", .), 
+            "Effect estimate (95% CI)" = `Effect estimate (95% CI)`)
+
+
+write.csv(t.s.2.model.sum, "Paper Tables/t.s.2.model.sum.csv")
+
+#here's extra stuff about models to put into tables. Doesn't fit very nice into data.frame.
+#no interactions
+c(glance(t.s.u10k.simple.8vars.ncor.model.lm)[1:2], RMSE = sqrt(glance(t.s.u10k.simple.8vars.ncor.model.lm)[10]/nrow(filter(t.s.data.stan, bc_conc < 4000))), MaxCookD = max(cooks.distance(t.s.u10k.simple.8vars.ncor.model.lm)))
+t.s.u10k.simple.8vars.ncor.model.caret
+#final with interactions
+c(glance(t.s.u10k.final.model.lm)[1:2], RMSE = sqrt(glance(t.s.u10k.final.model.lm)[10]/nrow(filter(t.s.data.stan, bc_conc < 4000))), MaxCookD = max(cooks.distance(t.s.u10k.final.model.lm)))
+t.s.u10k.final.model.caret
+#just to confirm the by hand is correct. 
+
+#then for each add R2, Adj R2, LOOCV R2, RMSE, LOOCV RMSE?, BIC?, highest Cooks D, Moran's I
+#mutate(RMSE = sqrt(deviance/sum(!is.na(m.a.data.stan$bc_conc))))
+
+
+
+
+#####City Map Plots + Moran's I#####
+
+##MTL Summer
+#example code was written with lm predicted values added to the original data fram that included the lats and long. 
+#I don't want to do that because of the way the uni regressions run (all at once on all the data in the data frame)
+#create a new data from from the clean data, left join the lats and longs from the elevation code, and then smash in the predictions
+
+map.m.a.data.stan <- dplyr::filter(m.a.data.stan, bc_conc < 4000 & !is.na(bc_conc))
+colnames(map.m.a.data.stan)[1] <- "Filter_ID"    #needed to change column name to match for the full join. 
+#lat and long are already in, no need to join. 
+#map.m.a.data.stan <- dplyr::left_join(map.m.a.data.stan, dplyr::select(mtl.to.latlong.elevation, Filter_ID, latitude.x, longitude.x), by = "Filter_ID")
+
+describe(m.a.data.stan$bc_conc)
+describe(map.m.a.data.stan$bc_conc)
+predict(m.a.u4k.final.model.lm)
+map.m.a.data.stan[, c(1,2,(NCOL(map.m.a.data.stan)))]
+#had to filter out the bc > 4k and is.na prior to putting in the data frame. I guess that's okay. Those are the only ones that I can make predictions for. I'll see later if this is an issue
+
+map.m.a.data.stan$f.m.pred <- predict(m.a.u4k.final.model.lm)      #put final model predictions in there. Could have intermediary models in there too if I want
+map.m.a.data.stan$Filter_ID <- as.factor(map.m.a.data.stan$Filter_ID)
+str(map.m.a.data.stan)
+head(map.m.a.data.stan)
+
+# Make a map of the city using a shapefile downloaded from the Montreal open data portal
+# This is code from Susannah
+#mtl.tmp <- tempfile()
+#download.file("http://donnees.ville.montreal.qc.ca/dataset/00bd85eb-23aa-4669-8f1b-ba9a000e3dd8/resource/62f7ce10-36ce-4bbd-b419-8f0a10d3b280/download/limadmin-shp.zip", destfile = mtl.tmp)
+#unzip(mtl.tmp, exdir = ".")
+#I think this is read in as sp format. Note that LIMADMIN is the name of the file in the project folder. It is the name of the file that was downloaded and unziped. 
+#mtl.spdf <- readOGR(".", "LIMADMIN")
+#below converts from sp to sf
+#mtl.shp <- st_as_sf(mtl.spdf)
+#can also just read directly as an sf object
+
+#after watching some datacamp, I'll do it like this:
+#oh, and save the map data to a subfolder to keep it neat
+mtl.tmp.try <- tempfile()
+download.file("http://donnees.ville.montreal.qc.ca/dataset/00bd85eb-23aa-4669-8f1b-ba9a000e3dd8/resource/62f7ce10-36ce-4bbd-b419-8f0a10d3b280/download/limadmin-shp.zip", destfile = mtl.tmp.try)
+unzip(mtl.tmp.try, exdir = "Map Data/")
+mtl.sf <- st_read("Map Data/LIMADMIN.shp")
+#note that these are unprojected. If I want to do calculations, I should use a projected 
+
+# In this case my outcome is bc_conc
+m.a.bc.obs <- ggplot() + 
+  geom_sf(data = mtl.sf) +
+  geom_point(data = map.m.a.data.stan, aes(x = longitude.x, y = latitude.x, color = bc_conc, size=10)) +
+  scale_color_gradient(low = "blue", high = "red", name = "Observed BC (ng/m3)") + 
+  theme_minimal() +
+  guides(color = guide_legend(order=1, rev=T),
+         size = F)
+
+# Plot of predicted ROS values
+m.a.bc.pred <- ggplot() + 
+  geom_sf(data = mtl.sf) +
+  geom_point(data = map.m.a.data.stan, aes(x = longitude.x, y = latitude.x, color = f.m.pred, size=10)) +
+  scale_color_gradient(low="blue", high="red", name = "Predicted BC (ng/m3)") + 
+  theme_minimal() +
+  guides(color = guide_legend(order=1, rev=T),
+         size = F)
+#I get an intermitent error about not finding an edge. It might be due to a font being disabled, but I can't get that solution to work.
+#Another solution is just to force the graphics window to open first using quartz. Good enough for now.
+#quartz makes it harder to save the file. I may have solved this by restoring standard fonts. 
+quartz()
+grid.arrange(m.a.bc.obs, m.a.bc.pred) # Arrange the 2 plots on the same field
+
+# Map the difference between predicted and observed
+map.m.a.data.stan$f.m.diffs <- map.m.a.data.stan$bc_conc - map.m.a.data.stan$f.m.pred
+m.a.bc.diffs <- ggplot() + 
+  geom_sf(data = mtl.sf) +
+  geom_point(data = map.m.a.data.stan, aes(x = longitude.x, y = latitude.x, color = bc_conc, size = abs(f.m.diffs^2))) +
+  scale_color_gradient(low="blue", high="red", name = "Obs BC") + 
+  theme_minimal() +
+  guides(color = guide_legend(order=1, rev=T),
+         size = F)
+m.a.bc.diffs
+#make it so the color tells you BC concentration that was measured there and size of circle tells you how much the prediction was off. Look for a pattern
+
+
+
+
+map.t.s.data.stan <- dplyr::filter(t.s.data.stan, bc_conc < 10000 & !is.na(bc_conc))
+colnames(map.t.s.data.stan)[1] <- "Filter_ID"    #needed to change column name to match for the full join. 
+#lat and long are already in, no need to join. 
+#map.m.a.data.stan <- dplyr::left_join(map.m.a.data.stan, dplyr::select(mtl.to.latlong.elevation, Filter_ID, latitude.x, longitude.x), by = "Filter_ID")
+
+describe(t.s.data.stan$bc_conc)
+describe(map.t.s.data.stan$bc_conc)
+predict(t.s.u10k.final.model.lm)
+#had to filter out the bc > 10k and is.na prior to putting in the data frame. I guess that's okay. Those are the only ones that I can make predictions for. I'll see later if this is an issue
+
+map.t.s.data.stan$f.m.pred <- predict(t.s.u10k.final.model.lm)      #put final model predictions in there. Could have intermediary models in there too if I want
+map.t.s.data.stan$Filter_ID <- as.factor(map.t.s.data.stan$Filter_ID)
+str(map.t.s.data.stan)
+head(map.t.s.data.stan)
+
+to.tmp.try <- tempfile()
+download.file("http://opendata.toronto.ca/gcc/community_planning_boundary_wgs84.zip", destfile = to.tmp.try)
+unzip(to.tmp.try, exdir = "Map Data/")
+to.sf <- st_read("Map Data/COMMUNITY_PLANNING_BNDRY_WGS84.shp")
+
+
+ggplot() + geom_point(data = map.t.s.data.stan, aes(x = longitude.x, y = latitude.x, color = bc_conc, size=10))
+#they can plot separate, but when together the data lat goes to zero and data long goes a bit off....
+
+st_crs(mtl.shp)
+st_crs(to.shp)
+extent(to.shp)
+extent(mtl.shp)
+#so the TO shape file is on some other coordinate system or smoe other scalling. 
+str(map.t.s.data.stan)
+t.s.bc.obs <- ggplot() + 
+  geom_sf(data = to.sf) +
+  geom_point(data = map.t.s.data.stan, aes(x = longitude.x, y = latitude.x, color = bc_conc, size=10)) +
+  scale_color_gradient(low = "blue", high = "red", name = "Observed BC (ng/m3)") + 
+  theme_minimal() +
+  guides(color = guide_legend(order=1, rev=T),
+         size = F)
+
+# Plot of predicted ROS values
+t.s.bc.pred <- ggplot() + 
+  geom_sf(data = to.sf) +
+  geom_point(data = map.t.s.data.stan, aes(x = longitude.x, y = latitude.x, color = f.m.pred, size=10)) +
+  scale_color_gradient(low="blue", high="red", name = "Predicted BC (ng/m3)") + 
+  theme_minimal() +
+  guides(color = guide_legend(order=1, rev=T),
+         size = F)
+
+# Map the difference between predicted and observed
+map.t.s.data.stan$f.m.diffs <- map.t.s.data.stan$bc_conc - map.t.s.data.stan$f.m.pred
+t.s.bc.diffs <- ggplot() + 
+  geom_sf(data = to.sf) +
+  geom_point(data = map.t.s.data.stan, aes(x = longitude.x, y = latitude.x, color = bc_conc, size = abs(f.m.diffs^2))) +
+  scale_color_gradient(low="blue", high="red", name = "Obs BC") + 
+  theme_minimal() +
+  guides(color = guide_legend(order=1, rev=T),
+         size = F)
+t.s.bc.diffs
+#make it so the color tells you BC concentration that was measured there and size of circle tells you how much the prediction was off. Look for a pattern
+
+library(spdep)
+library(lctools)
+library(MASS)
+library(geosphere)
+library(ape)
+
+1/as.matrix(distm(cbind(map.t.s.data.stan$longitude.x, map.t.s.data.stan$latitude.x), fun=distVincentyEllipsoid))
+
+#Moran's I
+#Montreal
+
+# https://cran.r-project.org/web/packages/ape/vignettes/MoranI.pdf
+?dist
+#ape was made for evolution. I probably shouldn't use it. It is for a different application/ 
+#create a matrix of the inverse distances between each point. distm is from geosphere package.
+m.a.dist.inv <- 1/as.matrix(distm(cbind(map.m.a.data.stan$longitude.x, map.m.a.data.stan$latitude.x), fun=distVincentyEllipsoid))
+#inverse of 0 is inf, so get back to 0
+diag(m.a.dist.inv) <- 0
+#we are using inverse distance as the weight, which means that the smaller the distance, the greater the weight. 
+Moran.I(map.m.a.data.stan$bc_conc, m.a.dist.inv)
+
+#Toronto
+#create a matrix of the inverse distances between each point
+t.s.dist.inv <- 1/as.matrix(distm(cbind(map.t.s.data.stan$longitude.x, map.t.s.data.stan$latitude.x), fun=distVincentyEllipsoid))
+#inverse of 0 is inf, so get back to 0
+diag(t.s.dist.inv) <- 0
+#there's an inf entry (two spots exactly the same lat long?)
+which.max(t.s.dist.inv)
+max(t.s.dist.inv)
+#it's column 63, row 32 that is the Inf
+colnames(t.s.dist.inv) <- 1:63
+describe(t.s.dist.inv)
+#replace anything over 200 with just 200. This solves the error and dapens the extreme values from dominating. 
+t.s.dist.inv <- ifelse(t.s.dist.inv > 0.008, 0.008, t.s.dist.inv)
+Moran.I(map.t.s.data.stan$bc_conc, t.s.dist.inv, alternative = "two.sided")
+#soooo those are both cities done with the ape package. Probably not appropriate due to it being made for.....apes. 
+#and Toronto and Montreal have different results, so either way, it'll be something to interpret. 
+
+
+
+#From this post, http://r.789695.n4.nabble.com/troubles-performing-Moran-I-test-td878799.html
+#this is a post saying don't use ape for geographical stuff, use spdep. It shows how to
+#convert the weight matrix to a row standardised general weights object:
+m.a.lw <- mat2listw(m.a.dist.inv)
+m.a.lw$weights
+#now this is how you pass on the inverse distance weights! W means that each row of weghts is standardized
+m.a.lw.W <- nb2listw(m.a.lw$neighbours, m.a.lw$weights, style = "W")
+moran.test(map.m.a.data.stan$bc_conc, m.a.lw.W, alternative = "two.sided")
+#would ya look at that, I get the same answer as the ape function!
+#that is just for looking at the overall spatial distribution, this is intercept only model (ie: teh mean). That is not looking at the model residuals to see if there are spatial paterns to the residuals
+lm.morantest(m.a.u4k.final.model.lm, m.a.lw.W)
+#so looks like the residuals are not spatially corrolated
+
+t.s.lw <- mat2listw(t.s.dist.inv)
+t.s.lw$weights
+#now this is how you pass on the inverse distance weights!
+t.s.lw.W <- nb2listw(t.s.lw$neighbours, t.s.lw$weights, style = "W")
+moran.test(map.t.s.data.stan$bc_conc, t.s.lw.W, alternative = "two.sided")
+#the same as well. Can feel pretty confident that is that. 
+#that is just for looking at the overall spatial distribution, this is intercept only model (ie: teh mean). That is not looking at the model residuals to see if there are spatial paterns to the residuals
+lm.morantest(t.s.u10k.final.model.lm, t.s.lw.W)
+#so looks like the residuals are not spatially corrolated
+
+
+
+#here is trying some other methods. Not sure iif there are any nuggets worth keeping in there....
+m.a.coords <- cbind(map.m.a.data.stan$longitude.x, map.m.a.data.stan$latitude.x)
+#the second entry is the nearest neighbour. This is a somewhat arbitrary number. It says how many neighbours to look at
+#I think this is less ideal than distance, but not bad. The null is that there are no clusters, there is no spatial correlation, distribution is random. 
+moransI(m.a.coords, 6, map.m.a.data.stan$bc_conc)
+moransI("help")
+
+#d1 is min distance, d2 is max distance, they don't have defaults so I put a large number for d2. longlat = T means it is expecting long lats in degrees and is calculating in km
+dnearneigh(m.a.coords, d1 = 0, d2 = 1000, longlat = TRUE)
+
+moran.test(map.m.a.data.stan$bc_conc, 
+          nb2listw(dnearneigh(m.a.coords, d1 = 0, d2 = 1000, longlat = TRUE), style = "W"))
+
+moran.plot(map.m.a.data.stan$bc_conc, 
+           nb2listw(dnearneigh(m.a.coords, d1 = 0, d2 = 1000, longlat = TRUE)))
+
+m.a.nearest.6 <- dnearneigh(m.a.coords, d1 = 0, d2 = 1000, longlat = TRUE)
+m.a.nearest.6.nb <- knn2nb(m.a.nearest.6)
+plot(m.a.nearest.6.nb, m.a.coords)
+?nb2listw
+m.a.spatial.weights.6 <- nb2listw(m.a.nearest.6)
+lm.morantest(m.a.u4k.final.model.lm, m.a.spatial.weights.6)
+#doesn't look like there are spatial dependencies with the 6 nearest neighbours. Keep in mind that I have not weighted the distances, and that montreal has a bottleneck
+
+t.s.coords <- cbind(map.t.s.data.stan$longitude.x, map.t.s.data.stan$latitude.x)
+t.s.nearest.6 <- knearneigh(t.s.coords, k = 1, RANN = F)
+t.s.nearest.6.nb <- knn2nb(t.s.nearest.6)
+plot(t.s.nearest.6.nb, t.s.coords)
+t.s.spatial.weights.6 <- nb2listw(t.s.nearest.6.nb)
+lm.morantest(t.s.u10k.final.model.lm, t.s.spatial.weights.6)
+#doesn't look like there are spatial dependencies with the 6 nearest neighbours. Keep in mind that I have not weighted the distances.
+
+
+
+
+
+
+library(sp)
+library(spdep)
+example(columbus) 
+coords <- st_as_sf(columbus, coords = c("longitude.x", "latitude.x"), crs = 4326)
+dlist <- nbdists(col.gal.nb, coords) 
+dlist <- lapply(dlist, function(x) 1/x) 
+Wa <- nb2listw(col.gal.nb, glist = dlist, style = "W") 
+Wb <- nb2listw(col.gal.nb, glist = dlist, style = "B") 
+summary(sapply(Wa$weights, sum)) 
+summary(sapply(Wb$weights, sum)) 
+
+
+
+
+
+
+
+
+
+
+#notes from datacamp:
+  #can convert a dataframe with coordinates to an sf object. The coords are the column names, the crs is the coord system. df_sf <- st_as_sf(df, coords = c("longitude", "latitude"), crs = 4326)
+  #crs = 4326 is the unprojected, lat and long in degrees, usually you want a projected version for calculations (eg: buffers). Use st_transfrorm() to change the crs
+  #st_buffer() creates buffers of a defined distance around sf data points
+  #can plot(map.sf) then plot(st_geometry(bufferobj)) and some other stuff to get the map and add the geometries to it
+
+#just a bit of example messing around code
+plot(to.sf)
+to.data.stan.sf <- st_as_sf(map.t.s.data.stan, coords = c("longitude.x", "latitude.x"), crs = 4326)
+plot(st_geometry(to.data.stan.sf))
+to.data.stan.sf <- st_transform(to.data.stan.sf, crs = "+proj=utm +zone=18 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0")
+to.data.stan.sf.buffer <- st_buffer(to.data.stan.sf, dist = 10000)
+plot(st_geometry(to.data.stan.sf.buffer))
+
+
+###Obs vs Pred Graphs ######
+#montreal
+ggplot(data = filter(map.m.a.data.stan, bc_conc < 4000), aes(x = f.m.pred, y = bc_conc)) + 
+  geom_point() +
+  stat_smooth(method="lm") + 
+  stat_fit_glance(method = "lm",
+                  method.args = list(formula = y ~ x),
+                  aes(label = sprintf('r^2~"="~%.3f',
+                                      stat(r.squared))), parse = TRUE)
+  geom_abline(slope = 0.527, intercept = 0) +
+  geom_abline(slope = 0.657, intercept = 0) +
+  geom_abline(slope = 1, intercept = 0) +
+  xlim(0, 3000) + ylim(0, 3000)
+  
+nrow(map.m.a.data.stan)
+max(map.m.a.data.stan$bc_conc)
+nrow(map.t.s.data.stan)
+
+
+
+#toronto
+ggplot(data = filter(map.t.s.data.stan, bc_conc < 10000), aes(x = f.m.pred, y = bc_conc)) + 
+  geom_point() +
+  stat_smooth(method="lm") + 
+  stat_fit_glance(method = "lm",
+                  method.args = list(formula = y ~ x),
+                  aes(label = sprintf('r^2~"="~%.3f',
+                                      stat(r.squared))), parse = TRUE)
+  geom_abline(slope = 0.527, intercept = 0) +
+  geom_abline(slope = 0.657, intercept = 0) +
+  geom_abline(slope = 1, intercept = 0) +
+  xlim(0, 3000) + ylim(0, 3000)
+#notice the four points that are 4 of the 5 lowest observed, notice how they have predicted values that are too high. What's going on with those points?
+map.t.s.data.stan %>%
+  arrange(f.m.diffs) %>%
+  filter(f.m.diffs < -1000) %>%
+  dplyr::select(Filter_ID, bc_conc, f.m.pred, f.m.diffs, Nox_50m, com_750m, resid_100m, ind_1000m, d_airport, d_NPRI_PM, latitude.x, longitude.x) %>%
+  formattable()
+#nothing jumps out at me from those spots. They are all pretty regular looking. Maybe they weren't as close to the intersections as most of the others?
 
 # Predictor Counts ######
 
@@ -6206,25 +7187,16 @@ uni.vars <- cbind(MTL_S_BC = ifelse(m.s.bc.uni.reg$P.Value < 0.05, as.character(
 
 formattable(as.data.frame(uni.vars))
 
-# BIC ######
 
-###trying bic.glm
-str(m.s.data.stan)
-sum(is.na(m.s.data.stan$bc_conc))
-sum(is.na(m.s.data.stan$uvpm_conc))
-bic.glm(data = m.s.data.stan, formula(bc_conc ~ . - bc_conc - uvpm_conc), glm.family = gaussian())
-nrow(m.s.data.stan[ , 4:156])
-length(m.s.data.stan$d_port)
-
-bic.glm.formula(data = m.s.data.stan, f = m.s.data.stan$bc_conc ~ colnames(m.s.data.stan[ , 4:15]), famliy = gaussian())
-bic.glm.formula(data = m.s.data.stan, f = m.s.data.stan$bc_conc ~ m.s.data.stan$d_port + m.s.data.stan$rail_200m + m.s.data.stan$rail_100m + m.s.data.stan$rail_50m, glm.family = gaussian())
-traceback()
-describe(m.s.data.stan$d_port)
-describe(m.s.data.stan$bc_conc)
-
-str(m.s.data.stan)
 
 # Working Notes ########
+
+#26 July notes:
+#are there two TO sites with the exact same lat and long? When I make the inverse distance matrix, I get 1 cell = Inf, I think it's cell 63x32
+#Montreal has a pretty janky spread. Look into it. See what coords are not on the map. Ask if that's legit. 
+# I think I have some sort of Moran's I., though it is not wrt to the regression and residuals. Montreal has spatial correlation (ie: downtown) and Toronto doesn't
+#Clean up the paper, what I have already. The Intro is solid, but the methods still have old language in it (talkinga bout 5 models)
+
 
 #5 July notes:
 #leaps() works for MTL Annual, not so much for TO S and MTL+TO Pooled

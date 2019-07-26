@@ -26,3 +26,5 @@ Selected variables for MTL Annual
 RMD for variable selection completed. 
 
 Incorporated and analyzed woodburn buffers. Started using leaps(). Limited success. |Partially updated the RMD, though there isn't much to put in there.
+
+Focused on MTL Annual and TO Summer. Have code for exhaustive search, paper table set ups, LOOCV, checks, and some maps. Just waiting for updated NOx data

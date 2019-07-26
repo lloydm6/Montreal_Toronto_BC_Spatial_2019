@@ -169,7 +169,7 @@ describe(mtl.to.latlong)
 mtl.to.just.latlong <-mtl.to.latlong[,3:4]
 
 #this is my API key from google
-key <- "AIzaSyBuZ4BbvdZNQbej19sGQddogYu4_FNAEVQ"
+key <- ""
 
 #function can't handle NAs, filtered them out
 #mtl.to.elevation.googleway <- google_elevation(filter(mtl.to.just.latlong, !is.na(latitude) & !is.na(longitude)), location_type = "individual", key = key)

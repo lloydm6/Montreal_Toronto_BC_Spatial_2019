@@ -54,10 +54,19 @@ Candidate Variables with Spearman Correlations < 0.7
 ```{r}
 formattable(dplyr::filter(mark.sel.mtl.a.u4k, IV != "mjrd" & IV != "traffic"))
 
+
+```
+
+
+Correlation Matrix
+```{r}
+
 formattable(as.data.frame(round(cor(dplyr::select(dplyr::filter(mark.m.a.data.stan, bc_conc < 4000), build_1000m, mjrd_1000m, bus_stop_200m, traffic_1000m, 
                   tot_Nox_750m, d_NPRI_Nox, d_railline, d_airport, d_shore), method = "spearman"), 3))) 
 ```
 
+
+Variables Selected by leaps package using exhaustive search on 7 candidate variables. Included all interactions and ^2.
 ```{r results = 'asis'}
 stargazer(lm(data = dplyr::filter(mark.m.a.data.stan, bc_conc < 4000), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + I(d_airport^2) + d_railline + I(d_shore^2) + 
              tot_Nox_750m:I(d_shore^2) + d_railline:I(d_shore^2)), ci = TRUE, ci.level = 0.95, type = "html")
@@ -71,6 +80,14 @@ Candidate Variables with Spearman Correlations < 0.7
 
 formattable(dplyr::filter(mark.sel.to.u10k, IV != "mjrd" & IV != "road" & IV != "d_majrd" & IV != "bus" & IV != "tot_traffic" & IV != "tot_Nox"))
 
+
+```
+
+
+Correlation Matrix
+```{r}
+
+
 formattable(as.data.frame(round(cor(dplyr::select(dplyr::filter(mark.t.s.data.stan, bc_conc < 10000), build_200m, com_750m, resid_100m, ind_1000m, open_50m, 
                   mjrd_100m, road_50m, d_highway, d_majrd, bus_50m, inter_50m, traffic_100m, tot_traffic_100m, tot_Nox_100m,
                   Nox_50m, d_NPRI_PM, d_airport, rail_1000m), method = "spearman"), 3))) 
@@ -82,16 +99,29 @@ mark.lm.to.u10k.9vars.seqrep <- lm(data = dplyr::filter(mark.t.s.data.stan, bc_c
                                  com_750m:resid_100m + com_750m:ind_1000m + com_750m:d_airport + resid_100m:ind_1000m + ind_1000m:Nox_50m +
                                  d_highway:Nox_50m)
 
-mark.lm.to.u10k.11vars.seqrep <- lm(data = dplyr::filter(mark.t.s.data.stan, bc_conc < 10000), bc_conc ~ open_50m + Nox_50m + I(resid_100m^2) +
-                                     build_200m:ind_1000m + com_750m:resid_100m + com_750m:ind_1000m + resid_100m:ind_1000m + ind_1000m:Nox_50m +
-                                     ind_1000m:d_airport + d_highway:Nox_50m + Nox_50m:rail_1000m)
-summary(mark.lm.to.u10k.11vars.seqrep)
+mark.lm.to.u10k.11vars.seqrep <- lm(data = dplyr::filter(mark.t.s.data.stan, bc_conc < 10000), bc_conc ~ open_50m + Nox_50m +
+                                      I(resid_100m^2) + build_200m:ind_1000m + com_750m:resid_100m + com_750m:ind_1000m +
+                                      resid_100m:ind_1000m + ind_1000m:Nox_50m + ind_1000m:d_airport + d_highway:Nox_50m +
+                                      Nox_50m:rail_1000m)
+
+mark.lm.to.u10k.11vars.bward <- lm(data = dplyr::filter(mark.t.s.data.stan, bc_conc < 10000), bc_conc ~ open_50m + Nox_50m + I(build_200m^2) + I(com_750m^2) + build_200m:com_750m + build_200m:rail_1000m + com_750m:open_50m + com_750m:inter_50m + com_750m:Nox_50m + resid_100m:ind_1000m + ind_1000m:d_airport)
+
 ```
 
 
+Variables Selected by leaps package using:
+
+(1) exhaustive search on 9 of the candidate variables
+
+(2) "seqrep" algorithm on 9 of the candidate variables
+
+(3) "seqrep" algorithm on 11 candidate variables
+
+(4) "backwards" algorithm on 11 candidate variables
+
 ```{r results = 'asis'}
 
-stargazer(mark.lm.to.u10k.9vars.ex, mark.lm.to.u10k.9vars.seqrep, mark.lm.to.u10k.11vars.seqrep, ci = FALSE, ci.level = 0.95, type = "html")
+stargazer(mark.lm.to.u10k.9vars.ex, mark.lm.to.u10k.9vars.seqrep, mark.lm.to.u10k.11vars.seqrep, mark.lm.to.u10k.11vars.bward, ci = FALSE, ci.level = 0.95, type = "html")
 
 ```
 
@@ -101,10 +131,39 @@ stargazer(mark.lm.to.u10k.9vars.ex, mark.lm.to.u10k.9vars.seqrep, mark.lm.to.u10
 Candidate Variables with Spearman Correlations < 0.7
 ```{r}
 
+formattable(dplyr::filter(mark.sel.mts.pool.u10k, IV != "mjrd" & IV != "traffic"))
+
+
 ```
 
 
+Correlation Matrix
+```{r}
+
+
+formattable(as.data.frame(cor(dplyr::select(filter(mark.mts.pool.data.stan, bc_conc < 10000), build_200m, com_750m, resid_750m,
+                                            ind_500m, open_50m, mjrd_300m, road_50m, d_majrd, bus_50m, inter_50m, traffic_50m,
+                                            tot_Nox_100m, d_NPRI_PM, d_airport, d_port, d_shore), method = "spearman"))
+            )
+
+
+mark.lm.mts.pool.u10k.9vars.ex <- lm(data = dplyr::filter(mark.mts.pool.data.stan, bc_conc < 10000), bc_conc ~ city + com_750m +
+                                       Nox_50m + build_200m:resid_100m + com_750m:resid_100m + com_750m:ind_1000m +
+                                       com_750m:d_airport + resid_100m:open_50m + ind_1000m:d_highway + d_highway:Nox_50m)
+
+
+
+```
+
+
+Variables Selected by leaps package using:
+
+-exhaustive search on 9 of the candidate variables
 ```{r results = 'asis'}
+
+
+
+stargazer(mark.lm.mts.pool.u10k.9vars.ex, ci = FALSE, ci.level = 0.95, type = "html")
 
 ```
 

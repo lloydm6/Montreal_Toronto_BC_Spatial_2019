@@ -26,6 +26,13 @@ library(ggplot2)
 library(gridExtra)
 library(stringr)
 library(ape)
+library(spdep)
+library(lctools)
+library(geosphere)
+library(car)
+library(DAAG)
+library(boot)
+library(ggpubr)
 
 #xlsx was working but now it doesn't. It says it need rJava to work. I tried to get rJava to work (~5hrs of internet wormhole trial and error). I made some progress (changed the type of errors I got), but it's still not working. 
 #the rJava bug has been fixed for now, but the underlying Java 12 problem has not been solved, so other packages that require Java do not work. 
@@ -54,7 +61,7 @@ str(m.w.outcomes.raw)
 str(m.t.s.outcomes.raw)
 
 m.s.determinants <- read_xlsx("Variable Data Montreal 20-06-2019 ML.xlsx", sheet = 2)
-t.s.determinants <- read_xlsx("Variable Data Toronto.xlsx", sheet = 2)
+t.s.determinants <- read_xlsx("Variable Data Toronto 2019.08.01.xlsx", sheet = 2)
 
 m.s.wb.determinants <- read.csv("woodburning buffers.csv")
 
@@ -71,9 +78,7 @@ m.s.determinants[is.na(m.s.determinants)] <- 0
 #add wood burning to the m.s.determinants
 setdiff(sort(m.s.determinants$Filter_ID), sort(as.character(m.s.wb.determinants$filter)))
 setdiff(sort(as.character(m.s.wb.determinants$filter)), sort(m.s.determinants$Filter_ID))
-filter(m.s.data.all, f.id == "MTL_space_41")
-#MTL_space_41 is missing from the wb.data, though it is bad data, so it wouldn't be kept anyways. Didn't want to add to book,just adding here
-#note, this is one way code and shouldn't be run if the the csv gets changed. There is a bit of a sanity check, it will input "character(0)" if there is not differences between
+
 m.s.wb.determinants <- add_row(m.s.wb.determinants)
 m.s.wb.determinants$filter <- as.character(m.s.wb.determinants$filter)
 m.s.wb.determinants[nrow(m.s.wb.determinants), 3] <- setdiff(sort(m.s.determinants$Filter_ID), sort(as.character(m.s.wb.determinants$filter)))
@@ -214,17 +219,6 @@ NCOL(m.s.determinants)
 #missing MTL_space_41
 
 
-describe(filter(m.s.data, good_data == 1)$elevation)
-describe(filter(t.s.data, good_data == 1)$elevation)
-describe(filter(m.a.data)$elevation)
-describe(filter(t.s.data, good_data == 1)$elevation)
-length(m.a.data$elevation)
-
-nrow(filter(m.s.data, good_data == 1))
-nrow(filter(t.s.data, good_data == 1))
-
-#this was just a check to make sure the lats and longs are the same for the two files. 
-#it was from when they lats and longs were taken from determinants.raw
 #there are some missing lats and longs, there is another file with them so check to see what it's like
 mtl.to.latlong.2 <- read.csv("Montreal and Toronto SPATIAL STUDY FILTER DATA and Chain of Custody 03-07-2019 all.csv")
 mtl.to.latlong.1and2 <- left_join(mtl.to.latlong, mtl.to.latlong.2[,1:6], by = "filter")
@@ -304,6 +298,7 @@ as.numeric(as.character(t.s.outcomes[ , 29]))
 
 #i'll keep them separate for the unpooled unis. I'm sure I could fancy code this, but not tonight cowboy. Will mash togther for the pooled. 
 #bring them all together. The t.s.determinants come in with everything except the first column, so I can keep adding variables to the end if I want
+
 t.s.data.all <- data.frame(f.id = t.s.determinants$Filter_ID, bc_conc = as.numeric(t.s.outcomes[ , 28]), uvpm_conc = as.numeric(as.character(t.s.outcomes[ , 29])), good_data = as.factor(t.s.outcomes[ , 30]), t.s.determinants[ , -1])
 
 #just checking to make sure they are the correct length
@@ -313,14 +308,20 @@ length(as.numeric(as.character(t.s.outcomes[ , 27])))
 nrow(t.s.determinants[ , -1])
 head(t.s.data.all[,1:4 ])
 str(t.s.data.all)
-t.s.data.all[,155:158]
+t.s.data.all[,155:161]
+
+
 
 #take out bad data
-t.s.data <- subset(t.s.data.all, good_data == 1)
+t.s.data <- filter(t.s.data.all, good_data == 1 & f.id != "TO_space_97")
+
+t.s.data[,155:161]
 
 nrow(t.s.data)
 nrow(t.s.data.all)
 describe(t.s.data.all$good_data)
+describe(t.s.data$bc_conc)
+#good, was 64, then I learned that TO_space_97 was a location repeat and removed it. 
 
 # Now do MTL Winter
 #there is a key to link the site ID of m.outcomes with the filter ID
@@ -522,8 +523,28 @@ describe(t.s.data$bus_stop_1000m)
 #toronto also has an observation of inter_1000m = 0......so how did they drive there?!
 filter(t.s.data, inter_1000m == 0)
 
+library(tidyr)
+library(dplyr)
+#are there two Toronto sites with the same lat long?
+cbind(t.s.data$latitude.x, t.s.data$longitude.x)
+t.s.data %>%
+  dplyr::select(f.id, latitude.x, longitude.x) %>%
+  transmute(f.id = f.id, latlong = paste(latitude.x, longitude.x, sep = ", ")) %>%
+  summarize(n_distinct(latlong), n())
+#so there are two locations with teh exact same lat and long
+#that was then, this is now. Alllllll gooood
 
-
+t.s.data %>%
+  dplyr::select(f.id, latitude.x, longitude.x) %>%
+  transmute(f.id = f.id, latlong = paste(latitude.x, longitude.x, sep = ", ")) %>%
+  arrange(f.id) %>%
+  mutate(dupes = duplicated(latlong)) %>%
+  arrange(desc(f.id)) %>%
+  mutate(partnerdupe = duplicated(latlong)) %>%
+  filter(dupes == TRUE | partnerdupe == TRUE)
+#so I think it's TO_space_97 and TO_space_18
+#yep. It's them
+#97 is no longer in there, so all goooood
 
 # MTL S Histograms ####
 
@@ -1191,11 +1212,14 @@ m.a.data.stan <- dplyr::select(m.a.data.stan, 1:2, 7, 9, 11, 12, 13:ncol(m.a.dat
 colnames(t.s.data)[c(-1,-2,-3,-4)]
 summary(scale(t.s.data[ , c(-1,-2,-3,-4, -157, -158)]))
 ncol(t.s.data)
-t.s.data.stan <- data.frame(t.s.data[ , 1:4], t.s.data[ , 157:158], scale(t.s.data[ , c(-1,-2,-3,-4, -157, -158)]))
+#t.s.data got updated with new IVs, so different number of rows. 
+t.s.data.stan <- data.frame(t.s.data[ , 1:4], t.s.data[ , (NCOL(t.s.data)-1):NCOL(t.s.data)], scale(t.s.data[ , c(-1,-2,-3,-4, -(NCOL(t.s.data)-1), -NCOL(t.s.data))]))
 summary(t.s.data.stan)
+(NCOL(t.s.data)-1)
 #can see in the summary that all the means are zero
 apply(t.s.data.stan, 2, sd)
 #can see all the sds are 1, nnnnnnnoice!
+#.....except rail_50m, what's going on there?! I think it's because there are so few observations. In pooled it gets better. 
 
 #same for TO
 which.max(t.s.data$bc_conc)
@@ -1235,13 +1259,11 @@ cbind(colnames(m.s.data), colnames(t.s.data))
 m.s.data.pool <- m.s.data
 m.s.data.pool$water_50m <- NULL
 m.s.data.pool$highway_50m <- NULL
-m.s.data.pool$bus_stop_200m <- NULL
-m.s.data.pool$bus_stop_100m <- NULL
-
 
 t.s.data.pool <- t.s.data
 t.s.data.pool$NPRI_PM_100m <- NULL
 t.s.data.pool$NPRI_Nox_100m <- NULL
+t.s.data.pool$bus_stop_50m <- NULL
 t.s.data.pool$d_woodburn <- rep(NA, nrow(t.s.data))
 t.s.data.pool$woodburn_1000m <- rep(NA, nrow(t.s.data))
 t.s.data.pool$woodburn_750m <- rep(NA, nrow(t.s.data))
@@ -1250,6 +1272,7 @@ t.s.data.pool$woodburn_200m <- rep(NA, nrow(t.s.data))
 t.s.data.pool$woodburn_100m <- rep(NA, nrow(t.s.data))
 describe(t.s.data.pool$d_woodburn)
 str(t.s.data.pool)
+str(m.s.data.pool)
 str(t.s.data.pool[, 150:162])  
 #woodburn is in there. 
 
@@ -1928,7 +1951,7 @@ m.a.u4k.bc.uni.reg <- full_join(m.a.u4k.bc.uni.beta.p, m.a.u4k.bc.uni.cis, by = 
                                 transmute(variable = variable, Beta = as.numeric(Beta), "2.5%" = as.numeric(`2.5%`), "97.5" = as.numeric(`97.5%`), r.squared, RMSE, SE, `P Value`)
 summary(m.a.u4k.bc.uni.reg)
 
-nrow(subset(m.a.u4k.bc.uni.reg, P.Value <= 0.05))
+nrow(subset(m.a.u4k.bc.uni.reg, `P Value` <= 0.05))
 nrow(subset(m.a.bc.uni.reg, P.Value <= 0.05))
 #6 with all data and 25 with the 3 over 4k outliers cut out
 #with 3 new obs, it's 6 and 32, d_woodburn doesn't show up
@@ -2300,7 +2323,7 @@ summary(long.t.s.data.stan)
 nrow(long.t.s.data.stan)/nrow(t.s.data.stan)
 ncol(t.s.data.stan)
 str(t.s.data.stan)
-#we had 78 rows for 152 columns, all but 6 got staked underneath. We should now have a df that is 146 times longer. CHECK!
+#we had 77 rows for 155 columns, all but 6 got staked underneath. We should now have a df that is 149 times longer. CHECK!
 
 slice(long.t.s.data.stan, 1:10)
 #slice is basially head, but you can pick where to look
@@ -2442,8 +2465,9 @@ to.u10k.bc.uni.reg <- full_join(to.u10k.bc.uni.beta.p, to.u10k.bc.uni.cis, by = 
 summary(to.u10k.bc.uni.reg)
 
 formattable(to.u10k.bc.uni.reg)
+formattable((subset(to.bc.uni.reg, P.Value <= 0.05)))
 nrow(subset(to.bc.uni.reg, P.Value <= 0.05))
-nrow(subset(to.u10k.bc.uni.reg, P.Value <= 0.05))
+nrow(subset(to.u10k.bc.uni.reg, `P Value` <= 0.05))
 #removing the outlier takes it from 63 pvals, ot 73 pvals
 
 
@@ -2784,6 +2808,8 @@ nrow(subset(mts.pool.bc.uni.reg, P.Value <= 0.05))
 nrow(subset(mts.pool.u10k.bc.uni.reg, P.Value <= 0.05))
 #there are 52 with the outlier and 42 without the outlier
 #now 54 and 44
+#with bus_stop updated it's 56 and 48
+
 
 formattable(subset(mts.pool.bc.uni.reg, P.Value <= 0.05))
 formattable(subset(mts.pool.u10k.bc.uni.reg, P.Value <= 0.05))
@@ -2825,6 +2851,7 @@ nrow(subset(mts.pool.uvpm.uni.reg, P.Value <= 0.05))
 nrow(subset(mts.pool.u10k.uvpm.uni.reg, P.Value <= 0.05))
 #there are 51 with the outlier and 31 without the outlier
 #now 47 and 32
+#with updated TO bus_stop it's 48 and 36
 
 formattable(subset(mts.pool.uvpm.uni.reg, P.Value <= 0.05))
 formattable(subset(mts.pool.u10k.uvpm.uni.reg, P.Value <= 0.05))
@@ -2873,6 +2900,8 @@ nrow(subset(mts.pool.u13k.bc.uni.reg, P.Value <= 0.05))
 
 setdiff(filter(mts.pool.u13k.bc.uni.reg, P.Value < 0.05)$variable, filter(mts.pool.u10k.bc.uni.reg, P.Value < 0.05)$variable)
 #building and intersection. Let's see what the plots look like with both
+#....there's a bus_stop in there now
+  #I think that's enough to warrant building the model again
 
 formattable(subset(mts.pool.bc.uni.reg, P.Value <= 0.05))
 formattable(subset(mts.pool.u10k.bc.uni.reg, P.Value <= 0.05))
@@ -3043,6 +3072,22 @@ nrow(subset(mts.pool.log.o0u13.bc.uni.reg, P.Value <= 0.05))
 
 
 
+
+
+# MTL Winter BC ~ Summer BC
+m.a.data
+
+
+m.w.s.bc.lm <- lm(data = m.a.data, w.bc_conc ~ s.bc_conc)
+summary(m.w.s.bc.lm)
+confint(m.w.s.bc.lm)
+m.a.u4k.simple.ncor.model.lm
+confint(lm(data = m.a.data, w.bc_conc ~ s.bc_conc + tot_Nox_750m + d_NPRI_Nox + d_airport + build_1000m + 
+             bus_stop_200m + d_railline + d_shore))
+
+
+
+m.a.u4k.final.model.lm
 
 #MTL XY Fit Plots######
 
@@ -3462,7 +3507,7 @@ t.uvpm.xy.fit.plot.u10k <- ggplot(data = subset(long.t.s.data.stan, uvpm_conc < 
 
 
 # just the p < 0.05 and the u10k
-t.s.bc.xy.fit.plot.u10k.pu5 <- ggplot(data = filter(long.t.s.data.stan, !is.na(bc_conc) & bc_conc < 10000 & variable %in% filter(to.u10k.bc.uni.reg, P.Value < 0.05)$variable), aes(x = value, y = bc_conc)) +
+t.s.bc.xy.fit.plot.u10k.pu5 <- ggplot(data = filter(long.t.s.data.stan, !is.na(bc_conc) & bc_conc < 10000 & variable %in% filter(to.u10k.bc.uni.reg, `P Value` < 0.05)$variable), aes(x = value, y = bc_conc)) +
   ggtitle("Toronto Summer p < 0.05 Variables vs BC (1 outlier over 10,000 removed)") +
   geom_point() + 
   facet_wrap(~ variable, scales = "free") +
@@ -4825,6 +4870,16 @@ summary(lm(data = filter(log.m.a.data.stan, bc_conc < 4000), logbc ~ d_woodburn 
 formattable(tbl.to.u10k.bc.uni)
 #look at file t.bc.xy.fit.plot.u10k.pu5.png for the p < 0.05 graphs and the tbl.to.u10k.bc.uni too
 
+#quick note on updated TO file with corrected bus_stop, TO_space_43's wierd inter_, and the 5 sites with NOx_1000m = 0
+    #bus stop doesn't show up for Toronto. 
+    #inter_ stays with 50m being the best
+    #NOx_1000m still doesn't show up. 
+
+
+filter(t.s.data, Nox_1000m == 0)
+filter(t.s.data, inter_1000m == 0)
+#just confirming that the zero values are not still there. They are not
+
 to.u10k.lin.variables <- c("build_200m", "com_750m", "resid_100m", "ind_1000m", "open_50m", "mjrd_100m", "road_50m", "d_highway", 
                            "d_majrd", "bus_50m", "inter_50m", "traffic_100m", "tot_traffic_100m", "tot_Nox_100m", "Nox_50m",
                            "d_NPRI_PM", "d_airport", "rail_1000m")
@@ -5244,6 +5299,14 @@ summary(lm(data = filter(log.t.s.data.stan, bc_conc < 10000 & bc_conc > 100 & ra
 #question: mjrd_300m vs 100m or 50m. The smaller distances have a higher R2, but 300m is nice and spread out. When trimming values above 2 sds, the 300m has a higher R2
 #question: traffic_50m has a crazy outlier. What do with that? 
 
+
+
+#quick note on updated TO file with corrected bus_stop, TO_space_43's wierd inter_, and the 5 sites with NOx_1000m = 0
+  #bus stop now shows up. Added to the model. Slight improvement. Not sure it would stay in through selection. 
+  #inter_ stays with 50m being the best
+  #NOx_1000m still doesn't show up. 
+
+
 #see below for work, but looks like best model is com_750m + ind_1000m + Nox_50m with an R2 of 0.628
 
 
@@ -5251,7 +5314,7 @@ summary(lm(data = filter(log.t.s.data.stan, bc_conc < 10000 & bc_conc > 100 & ra
 formattable(tbl.mts.pool.u10k.bc.uni)
 #look at file mts.pool.xy.fit.plot.u10k.pu5.png for the p < 0.05 graphs and the tbl.mts.pool.u10k.bc.uni too
 
-mts.pool.u10k.lin.variables <- c("build_200m", "com_750m", "resid_750m", "ind_500m", "open_50m", "mjrd_300m", "road_50m", "d_majrd", "bus_50m", "inter_50m",
+mts.pool.u10k.lin.variables <- c("build_200m", "com_750m", "resid_750m", "ind_500m", "open_50m", "mjrd_300m", "road_50m", "d_majrd", "bus_50m", "bus_stop_100m", "inter_50m",
                                  "traffic_50m", "tot_Nox_100m", "d_NPRI_PM", "d_airport", "d_port", "d_shore", "elevation")
 
 
@@ -5259,9 +5322,11 @@ mts.pool.u10k.nlin.variables <- c(NA)
 
 #all the linear and non-linear together
 mts.pool.u10k.full.multi.lm <- lm(data = filter(mts.data.pool.stan, bc_conc < 10000), bc_conc ~ build_200m + com_750m + resid_750m + ind_500m + open_50m + mjrd_300m + road_50m + 
-             d_majrd + bus_50m + inter_50m + traffic_50m + tot_Nox_100m + d_NPRI_PM + d_airport + d_port + d_shore + elevation)
+             d_majrd + bus_50m + bus_stop_100m + inter_50m + traffic_50m + tot_Nox_100m + d_NPRI_PM + d_airport + d_port + d_shore)
 summary(mts.pool.u10k.full.multi.lm)
 #gives 0.3297
+#addition of bus_stop_100m bumps it up to 0.331
+#note, I took out elevation, that is just a city indicator
 
 summary(bic.glm(data = filter(mts.data.pool.stan, bc_conc < 10000), bc_conc ~ com_750m + resid_750m + ind_500m + open_50m + mjrd_300m + road_50m + 
                   d_majrd + bus_50m + inter_50m + traffic_50m + tot_Nox_100m + d_NPRI_PM + d_airport + d_port + d_shore + elevation, glm.family = gaussian))
@@ -5327,6 +5392,13 @@ summary(lm(data = filter(mts.data.pool.stan, bc_conc < 10000), bc_conc ~ d_majrd
 summary(lm(data = filter(mts.data.pool.stan, bc_conc < 10000), bc_conc ~ bus_50m))
 summary(lm(data = filter(mts.data.pool.stan, bc_conc < 10000 & bus_50m < 2), bc_conc ~ bus_50m))
 #gooooood
+
+#new shit
+summary(lm(data = filter(mts.data.pool.stan, bc_conc < 10000), bc_conc ~ bus_stop_100m))
+summary(lm(data = filter(mts.data.pool.stan, bc_conc < 10000 & bus_stop_100m < 2), bc_conc ~ bus_stop_100m))
+summary(lm(data = filter(mts.data.pool.stan, bc_conc < 10000), bc_conc ~ bus_stop_200m))
+summary(lm(data = filter(mts.data.pool.stan, bc_conc < 10000 & bus_stop_100m < 2), bc_conc ~ bus_stop_200m))
+#yep, it should stay in. 100m is better. 
 
 summary(lm(data = filter(mts.data.pool.stan, bc_conc < 10000), bc_conc ~ inter_50m))
 summary(lm(data = filter(mts.data.pool.stan, bc_conc < 10000 & inter_50m < 2), bc_conc ~ inter_50m))
@@ -6022,6 +6094,10 @@ plot(fitted(m.a.u4k.final.model.lm), residuals(m.a.u4k.final.model.lm), main = "
 abline(h=0)
 #second is better than the first
 
+#run below to ID the weirdo points. Saved as a large picture to make labels readable
+text(qqnorm(residuals(m.a.u4k.final.model.lm)), labels = as.character(filter(m.a.data.stan, bc_conc < 4000)[,1]), pos = 2)
+filter(m.a.data.stan, f.id.summer == "MTL_space_8")
+
 #look at Cook's D
 plot(cooks.distance(m.a.u4k.final.model.lm))
 #max is about 0.2, that's goooood. People often use 1 as the threshold
@@ -6049,6 +6125,148 @@ m.a.u4k.final.model.caret <- train(bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airpo
                      )
 m.a.u4k.final.model.caret
 #R2 drops 0.13, suggesting the interactions might be slightly less overfit. 
+
+train(bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) + I(d_shore^2) + 
+        tot_Nox_750m:d_railline + d_railline:d_shore,   # model to fit
+      data = dplyr::filter(m.a.data.stan, bc_conc < 4000),                        
+      trControl = trainControl(method="repeatedcv", number=10, repeats=10),              # folds
+      method = "glm"                      # specifying regression model
+      )
+
+#variance inflation factor. Scores above 5 are not great. 
+vif(m.a.u4k.simple.ncor.model.lm)
+vif(m.a.u4k.final.model.lm)
+
+
+#that CV graph thingy
+
+CVlm(data = dplyr::filter(m.a.data.stan, bc_conc < 4000), form.lm = bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) + I(d_shore^2) + 
+       tot_Nox_750m:d_railline + d_railline:d_shore, m = 5, plotit = c("Observed", "Residual"))
+
+m.a.cvlm$Predicted
+attr(m.a.cvlm, 'ms')
+summary(glm(data = dplyr::filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) + I(d_shore^2) + 
+      tot_Nox_750m:d_railline + d_railline:d_shore, family = gaussian))
+
+
+# MTL A. 5-Fold Plot ######
+#randomly split the data
+m.a.data.stan.5fold <- filter(m.a.data.stan, bc_conc < 4000) %>%
+  dplyr::mutate(index = 1:n()) %>%
+  sample_n(n(), replace = FALSE) %>%
+  dplyr::mutate(fold = as.factor(c(rep(1:5, n() %/% 5), 1:(n() %% 5)))) %>%
+  arrange(fold)
+describe(m.a.data.stan.5fold$fold)
+str(m.a.data.stan.5fold$fold)
+split(asdf, c(1,5,2))
+?split
+
+m.a.u4k.final.model.lm
+#make an lm for each fold. The fold.lm is based on all the data except that fold and then that fold will be used to test later
+m.a.fold1.lm <- lm(data = filter(m.a.data.stan.5fold, fold != 1), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) +
+                   I(d_shore^2) + tot_Nox_750m:d_railline + d_railline:d_shore)
+m.a.fold2.lm <- lm(data = filter(m.a.data.stan.5fold, fold != 2), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) +
+                     I(d_shore^2) + tot_Nox_750m:d_railline + d_railline:d_shore)
+m.a.fold3.lm <- lm(data = filter(m.a.data.stan.5fold, fold != 3), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) +
+                     I(d_shore^2) + tot_Nox_750m:d_railline + d_railline:d_shore)
+m.a.fold4.lm <- lm(data = filter(m.a.data.stan.5fold, fold != 4), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) +
+                     I(d_shore^2) + tot_Nox_750m:d_railline + d_railline:d_shore)
+m.a.fold5.lm <- lm(data = filter(m.a.data.stan.5fold, fold != 5), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) +
+                     I(d_shore^2) + tot_Nox_750m:d_railline + d_railline:d_shore)
+#create a CV prediction column. Use the fold data on the fold model.
+m.a.data.stan.5fold$CVPred <- c(predict(m.a.fold1.lm, filter(m.a.data.stan.5fold, fold ==1)), 
+                                     predict(m.a.fold2.lm, filter(m.a.data.stan.5fold, fold ==2)), 
+                                     predict(m.a.fold3.lm, filter(m.a.data.stan.5fold, fold ==3)),
+                                     predict(m.a.fold4.lm, filter(m.a.data.stan.5fold, fold ==4)), 
+                                     predict(m.a.fold5.lm, filter(m.a.data.stan.5fold, fold ==5))
+                                     )
+summary(m.a.fold3.lm)
+#create a full data model prediction column
+m.a.data.stan.5fold$f.m.pred <- predict(m.a.u4k.final.model.lm, m.a.data.stan.5fold)
+#maybe check to make sure this came out the same as the f.m.pred in maps
+m.a.data.stan.5fold[, (NCOL(m.a.data.stan.5fold) - 4):NCOL(m.a.data.stan.5fold)]
+
+
+summary(m.a.fold5.lm)$r.squared
+summary(m.a.fold4.lm)$r.squared
+summary(m.a.fold3.lm)$r.squared
+summary(m.a.fold2.lm)$r.squared
+summary(m.a.fold1.lm)$r.squared
+#these are way too high and not comparable to the original model R2. 
+predict(m.a.fold1.lm, filter(m.a.data.stan.split.long, fold !=1))
+fold1.lm$fitted.values
+m.a.data.stan.split.long[, c(1:3,(NCOL(m.a.data.stan.split.long)-1):NCOL(m.a.data.stan.split.long))]
+describe(m.a.data.stan.split.long$fold)
+
+#check to reporduce this:
+summary(m.a.fold1.lm)$r.squared
+summary(m.a.fold1.lm)
+#R2 for fold 1 would be? Is that using the fold 1 model (built using all other data) on all the other data?
+1 - sum((filter(m.a.data.stan.5fold, fold !=1)$bc_conc - predict(m.a.fold1.lm, filter(m.a.data.stan.5fold, fold !=1)))^2)/
+  sum((filter(m.a.data.stan.5fold, fold !=1)$bc_conc - mean(filter(m.a.data.stan.5fold, fold !=1)$bc_conc))^2)
+#mkay, so the varaince and denominator work! I was missing the /(n-1)
+var(filter(m.a.data.stan.5fold, fold !=1)$bc_conc)*42
+#check check, it is reproduced. Now to get the R2 for the model with all the data? Or the test data?
+#R2 on the test data. So data = fold1
+1 - sum(
+  (
+    filter(m.a.data.stan.5fold, fold == 1)$bc_conc - predict(m.a.fold1.lm, filter(m.a.data.stan.5fold, fold == 1))
+  )^2
+)/
+  sum(
+    (
+      filter(m.a.data.stan.5fold, fold == 1)$bc_conc - mean(filter(m.a.data.stan.5fold, fold == 1)$bc_conc)
+    )^2
+  )
+var(filter(m.a.data.stan.5fold, fold == 1)$bc_conc)*10
+
+m.a.CV.r2 <- data.frame(fold = 1:5, r2 = rep(0, 5))
+for(i in 1:max(as.integer(m.a.data.stan.5fold$Fold))) {
+  m.a.CV.r2[i,2] <- 1 - sum((filter(m.a.data.stan.5fold, Fold == i)$bc_conc - filter(m.a.data.stan.5fold, Fold == i)$CVPred)^2)/
+    sum((filter(m.a.data.stan.5fold, Fold == i)$bc_conc - mean(filter(m.a.data.stan.5fold, Fold == i)$bc_conc))^2)
+  print(m.a.CV.r2[i,])
+}
+#..something ain't right
+#turns out, it can be a negative number. I have a hard time believing it, but I think it's true. 
+#What that means is that an average (ie: flat line) is a better pretdictor than the model. How?   
+#Well that one fold is a very small range (1100-1800 and most are within 300 of each other) and there's one point prediction that is 400 off, and the R2 severely punishes that. 
+#depending on how it randomizes the folds, I can get a negative R2. 
+mean(m.a.CV.r2$r2)
+
+write.csv(m.a.data.stan.5fold, "m.a.data.stan.5fold.csv")
+
+#as good as it gets for now. 
+ggplot() +
+  geom_smooth(data = m.a.data.stan.5fold, aes(x = f.m.pred, y = CVPred, colour= Fold), method = "lm", formula = y ~ x, se = FALSE) +
+  geom_point(data = m.a.data.stan.5fold, aes(x = f.m.pred, y = CVPred, colour= Fold, shape = Fold), size = 3) + 
+  stat_regline_equation(data = m.a.data.stan.5fold, aes(x = f.m.pred, y = CVPred, colour= Fold), formula = y ~ x) +
+  geom_abline(slope = 1, intercept = 0) + 
+  labs(title = "Montreal Annual Final Model 5-Fold Cross-Validation", 
+       x = "Full Data Model Prediction", y = "Fold Hold-Out Model Prediction of Fold Data") +
+  xlim(200, 2500) + ylim(200, 2500) +
+  theme(
+    # Remove panel border
+    panel.border = element_blank(),  
+    # Remove panel grid lines
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    # Remove panel background
+    panel.background = element_blank(),
+    # Add axis line
+    axis.line = element_line(colour = "grey")
+  ) +
+  geom_text(data = m.a.CV.r2, aes(x = 2000, y = c(1000, 900, 800, 700, 600), label = sprintf('Fold~%.3f~italic(R)^2~"="~%.3f', stat(m.a.CV.r2$fold), stat(m.a.CV.r2$r2))), parse = TRUE)
+
+#that is just a single 5-fold for visualization
+#we have the computational resources to do repeated
+train(bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) + I(d_shore^2) + 
+        tot_Nox_750m:d_railline + d_railline:d_shore,   # model to fit
+      data = dplyr::filter(m.a.data.stan, bc_conc < 4000),                        
+      trControl = trainControl(method="repeatedcv", number=5, repeats=10),              # folds
+      method = "glm"                      # specifying regression model
+)
+
+  
 
 
 
@@ -6191,7 +6409,7 @@ which.max(cooks.distance(t.s.u10k.final.model.lm))
 filter(t.s.data.stan, f.id == "TO_space_127")
 
 
-summary(lm(data = dplyr::filter(t.s.data.stan, bc_conc < 10000 & f.id != "TO_space_130" & f.id != "TO_space_130"), 
+summary(lm(data = dplyr::filter(t.s.data.stan, bc_conc < 10000 & f.id != "TO_space_130" & f.id != "TO_space_127"), 
                               bc_conc ~ Nox_50m + com_750m:resid_100m + com_750m:ind_1000m + com_750m:d_airport + resid_100m:ind_1000m + 
                                 resid_100m:d_NPRI_PM + ind_1000m:d_NPRI_PM + Nox_50m:d_NPRI_PM))
 #remove both points and the biggest changes are: ind_1000m:d_NPRI_PM (371 to 310, 17%) and com_750m:resid_100m (-631 to -518, 18%),   
@@ -6223,9 +6441,12 @@ abline(h=0)
 hist(t.s.u10k.final.model.lm$residuals, main = "8 var Toronto Model with Intx and ^2")
 qqnorm(residuals(t.s.u10k.final.model.lm), ylab = "Residuals", main = "Q-Q Plot 8 var Toronto Model with Intx and ^2")
 qqline(residuals(t.s.u10k.final.model.lm))
+#run below to ID the weirdo points. Saved as a large picture to make labels readable
+#text(qqnorm(residuals(t.s.u10k.final.model.lm)), labels = as.character(filter(t.s.data.stan, bc_conc < 10000)[,1]), pos = 4)
 plot(fitted(t.s.u10k.final.model.lm), residuals(t.s.u10k.final.model.lm), main = "8 var Toronto Model with Intx and ^2")
 abline(h=0)
 #those four points, bad predictions. Other than that, the final model looks good. Better than the simple multis
+#those four points are TO_space_32, 91, 101, and 128
 
 t.s.u10k.train.control <- trainControl(method = "LOOCV")
 
@@ -6248,6 +6469,8 @@ t.s.u10k.simple.8vars.ncor.model.caret <- train(bc_conc ~ com_750m + resid_100m 
 t.s.u10k.simple.8vars.ncor.model.caret
 #drops 0.08, suggests that the suppervised backwards steps helped reduce overfitting
 
+
+
 t.s.u10k.final.model.caret <- train(bc_conc ~ Nox_50m + com_750m:resid_100m + com_750m:ind_1000m + com_750m:d_airport + resid_100m:ind_1000m + 
                                       resid_100m:d_NPRI_PM + ind_1000m:d_NPRI_PM + Nox_50m:d_NPRI_PM,   # model to fit
                                                 data = dplyr::filter(t.s.data.stan, bc_conc < 10000),                       
@@ -6258,11 +6481,11 @@ t.s.u10k.final.model.caret
 #drops 0.10
 
 
-
+#variance inflation factor
+vif(t.s.u10k.simple.8vars.ncor.model.lm)
+vif(t.s.u10k.final.model.lm)
 
 #tried a couple of other LOOCVs before I got caret working. Not sure if there is potential. There is that one nifty graph. Keep hidden for now.  
-library(DAAG)
-library(boot)
 boot.cv <- glm(data = dplyr::filter(t.s.data.stan, bc_conc < 10000), bc_conc ~ com_750m + resid_100m + ind_1000m + d_highway + inter_50m + Nox_50m + 
        d_NPRI_PM + d_airport, family = gaussian)
 cv.glm(data = dplyr::filter(t.s.data.stan, bc_conc < 10000), glmfit = boot.cv)
@@ -6275,12 +6498,150 @@ cv.lm(data = dplyr::filter(t.s.data.stan, bc_conc < 10000), bc_conc ~ com_750m +
 #this one does a nice looking plot.....that I don't totally understand just yet. I think it's plotting the predicted vs observed for the 3 folds (ie: three subsets of data)
 #changed it to 10 folds. It gives the MSE, so sqrt(ms) to get RMSE. 
 CVlm(data = dplyr::filter(t.s.data.stan, bc_conc < 10000), form.lm = bc_conc ~ com_750m + resid_100m + ind_1000m + d_highway + inter_50m + Nox_50m + 
-        d_NPRI_PM + d_airport, m = 10)
+        d_NPRI_PM + d_airport, m = 5)
 
 CVlm(data = dplyr::filter(t.s.data.stan, bc_conc < 10000), form.lm = bc_conc ~ Nox_50m + com_750m:resid_100m + com_750m:ind_1000m + com_750m:d_airport + resid_100m:ind_1000m + 
-       resid_100m:d_NPRI_PM + ind_1000m:d_NPRI_PM + Nox_50m:d_NPRI_PM, m = 10)
+       resid_100m:d_NPRI_PM + ind_1000m:d_NPRI_PM + Nox_50m:d_NPRI_PM, m = 5, seed = 88)
 ?CVlm
 
+?sample
+
+summary(glm(data = dplyr::filter(t.s.data.stan, bc_conc < 10000), bc_conc ~ Nox_50m + com_750m:resid_100m + com_750m:ind_1000m + com_750m:d_airport + resid_100m:ind_1000m + 
+              resid_100m:d_NPRI_PM + ind_1000m:d_NPRI_PM + Nox_50m:d_NPRI_PM, family = gaussian))
+
+# TO S. 5-Fold Plot ######
+#randomly split the data
+t.s.data.stan.5fold <- filter(t.s.data.stan, bc_conc < 10000) %>% #take the outlier out
+  dplyr::mutate(index = 1:n()) %>%  #add an index just to see the randomization
+  sample_n(n(), replace = FALSE) %>%  #this just randomly samples the whole data frame
+  dplyr::mutate(Fold = as.factor(c(rep(1:5, n() %/% 5), 1:(n() %% 5)))) %>% #can assign fold in an ordered manner because it was already randomeds
+  arrange(Fold) #just to make it easier to look at
+describe(t.s.data.stan.5fold$Fold)
+str(m.a.data.stan.5fold$Fold)
+
+#make an lm for each fold. The fold.lm is based on all the data except that fold and then that fold will be used to test later
+t.s.fold1.lm <- lm(data = filter(t.s.data.stan.5fold, Fold != 1), bc_conc ~ Nox_50m + com_750m:resid_100m + com_750m:ind_1000m + com_750m:d_airport + resid_100m:ind_1000m + 
+                     resid_100m:d_NPRI_PM + ind_1000m:d_NPRI_PM + Nox_50m:d_NPRI_PM)
+t.s.fold2.lm <- lm(data = filter(t.s.data.stan.5fold, Fold != 2), bc_conc ~ Nox_50m + com_750m:resid_100m + com_750m:ind_1000m + com_750m:d_airport + resid_100m:ind_1000m + 
+                     resid_100m:d_NPRI_PM + ind_1000m:d_NPRI_PM + Nox_50m:d_NPRI_PM)
+t.s.fold3.lm <- lm(data = filter(t.s.data.stan.5fold, Fold != 3), bc_conc ~ Nox_50m + com_750m:resid_100m + com_750m:ind_1000m + com_750m:d_airport + resid_100m:ind_1000m + 
+                     resid_100m:d_NPRI_PM + ind_1000m:d_NPRI_PM + Nox_50m:d_NPRI_PM)
+t.s.fold4.lm <- lm(data = filter(t.s.data.stan.5fold, Fold != 4), bc_conc ~ Nox_50m + com_750m:resid_100m + com_750m:ind_1000m + com_750m:d_airport + resid_100m:ind_1000m + 
+                     resid_100m:d_NPRI_PM + ind_1000m:d_NPRI_PM + Nox_50m:d_NPRI_PM)
+t.s.fold5.lm <- lm(data = filter(t.s.data.stan.5fold, Fold != 5), bc_conc ~ Nox_50m + com_750m:resid_100m + com_750m:ind_1000m + com_750m:d_airport + resid_100m:ind_1000m + 
+                     resid_100m:d_NPRI_PM + ind_1000m:d_NPRI_PM + Nox_50m:d_NPRI_PM)
+#create a CV prediction column. Use the fold data on the fold model.
+t.s.data.stan.5fold$CVPred <- c(predict(t.s.fold1.lm, filter(t.s.data.stan.5fold, Fold ==1)), 
+                      predict(t.s.fold2.lm, filter(t.s.data.stan.5fold, Fold ==2)), 
+                      predict(t.s.fold3.lm, filter(t.s.data.stan.5fold, Fold ==3)),
+                      predict(t.s.fold4.lm, filter(t.s.data.stan.5fold, Fold ==4)), 
+                      predict(t.s.fold5.lm, filter(t.s.data.stan.5fold, Fold ==5))
+                      )
+
+t.s.data.stan.5fold[, (NCOL(t.s.data.stan.5fold) - 4):NCOL(t.s.data.stan.5fold)]
+#create a full data model prediction column
+t.s.data.stan.5fold$f.m.pred <- predict(t.s.u10k.final.model.lm, t.s.data.stan.5fold)
+#maybe check to make sure this came out the same as the f.m.pred in maps
+#as good as it gets for now. 
+
+#get the R2s
+#check to reporduce this:
+summary(t.s.fold1.lm)$r.squared
+summary(t.s.fold1.lm)
+#R2 for fold 1 would be? Is that using the fold 1 model (built using all other data) on all the other data?
+1 - sum((filter(t.s.data.stan.5fold, Fold !=1)$bc_conc - predict(t.s.fold1.lm, filter(t.s.data.stan.5fold, Fold !=1)))^2)/
+  sum((filter(t.s.data.stan.5fold, Fold !=1)$bc_conc - mean(filter(t.s.data.stan.5fold, Fold !=1)$bc_conc))^2)
+#mkay, so the varaince and denominator work! I was missing the /(n-1)
+var(filter(t.s.data.stan.5fold, Fold !=1)$bc_conc)*48
+#check check, it is reproduced. Now to get the R2 for the model with all the data? Or the test data?
+#R2 on the test data. So data = fold1
+1 - sum((filter(t.s.data.stan.5fold, Fold ==1)$bc_conc - predict(t.s.fold1.lm, filter(t.s.data.stan.5fold, Fold ==1)))^2)/
+  sum((filter(t.s.data.stan.5fold, Fold ==1)$bc_conc - mean(filter(t.s.data.stan.5fold, Fold ==1)$bc_conc))^2)
+#looks legit.
+#make a loop for all of them
+
+t.s.CV.r2 <- data.frame(fold = 1:5, r2 = rep(0, 5))
+for(i in 1:max(as.numeric(t.s.data.stan.5fold$Fold))) {
+  t.s.CV.r2[i,2] <- 1 - sum((filter(t.s.data.stan.5fold, Fold == i)$bc_conc - filter(t.s.data.stan.5fold, Fold == i)$CVPred)^2)/
+    sum((filter(t.s.data.stan.5fold, Fold == i)$bc_conc - mean(filter(t.s.data.stan.5fold, Fold == i)$bc_conc))^2)
+  print(t.s.CV.r2[i,])
+}
+
+mean(t.s.CV.r2$r2)
+cor(filter(t.s.data.stan.5fold, Fold == 1)$bc_conc, filter(t.s.data.stan.5fold, Fold == 1)$CVPred)^2
+cor(filter(t.s.data.stan.5fold, Fold == 2)$bc_conc, filter(t.s.data.stan.5fold, Fold == 2)$CVPred)^2
+#isn't that supposed to be the same?
+
+
+ggplot() +
+  geom_smooth(data = t.s.data.stan.5fold, aes(x = f.m.pred, y = CVPred, colour= Fold), method = "lm", formula = y ~ x, se = FALSE) +
+  geom_point(data = t.s.data.stan.5fold, aes(x = f.m.pred, y = CVPred, colour= Fold, shape = Fold), size = 3) + 
+  stat_regline_equation(data = t.s.data.stan.5fold, aes(x = f.m.pred, y = CVPred, colour= Fold), formula = y ~ x) +
+  geom_abline(slope = 1, intercept = 0) + 
+  labs(title = "Toronto Summer Final Model 5-Fold Cross-Validation", 
+       x = "Full Data Model Prediction", y = "Fold Hold-Out Model Prediction of Fold Data") +
+  xlim(200, 6000) + ylim(200, 6000) +
+  theme(
+    # Remove panel border
+    panel.border = element_blank(),  
+    # Remove panel grid lines
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    # Remove panel background
+    panel.background = element_blank(),
+    # Add axis line
+    axis.line = element_line(colour = "grey")
+  ) +
+  geom_text(data = m.a.CV.r2, aes(x = 4000, y = c(2000, 1800, 1600, 1400, 1200), 
+                                  label = sprintf('Fold~%.3f~italic(R)^2~"="~%.3f', stat(t.s.CV.r2$fold), stat(t.s.CV.r2$r2))), parse = TRUE)
+
+
+
+#That was done for visualization purposes. I have the computational resources to do repeated 5-fold CV
+#try 10-fold repeated cross validation. It actually comes out pretty high. 
+t.s.5fold.10rep.CV.caret <- train(bc_conc ~ Nox_50m + com_750m:resid_100m + com_750m:ind_1000m + com_750m:d_airport + resid_100m:ind_1000m + 
+        resid_100m:d_NPRI_PM + ind_1000m:d_NPRI_PM + Nox_50m:d_NPRI_PM,   # model to fit
+      data = dplyr::filter(t.s.data.stan, bc_conc < 10000),                       
+      trControl = trainControl(method="repeatedcv", number=5, repeats=10),              # folds
+      method = "glm"                      # specifying regression model
+)
+
+sd(t.s.5fold.10rep.CV.caret$resample$Rsquared)
+?train
+
+#test code to see if I could make a data frame
+#just keeping in case I want to play around again
+asdf <- data.frame(x = rnorm(30, mean = 10, sd = 1), y = rnorm(30, mean = 20, sd = 1))
+asdf$z <- 5 + (2*rnorm(30, mean = asdf$x, sd = 1)) - (0.5*asdf$y)
+asdf$I <- 1:30
+
+summary(lm(data = asdf, z ~ y + x))
+
+sample(asdf, size = 1)
+sample_frac(asdf, size = 0.2)
+
+slice(asdf, sample(c(1:5), 1))
+
+asdf.split <- split(asdf[1:nrow(asdf),],sample(rep(1:3,as.integer(nrow(asdf)/3))))
+str(asdf.split)
+
+asdf.long <- bind_rows(asdf.split, .id="fold")
+
+fold1.lm <- lm(data = filter(asdf.long, fold != 1), z ~ x + y)
+fold2.lm <- lm(data = filter(asdf.long, fold != 2), z ~ x + y)
+fold3.lm <- lm(data = filter(asdf.long, fold != 3), z ~ x + y)
+
+asdf.long$CVPred <- c(predict(fold1.lm, filter(asdf.long, fold ==1)), predict(fold2.lm, filter(asdf.long, fold ==2)), predict(fold3.lm, filter(asdf.long, fold ==3)))
+
+
+ggplot(asdf.long, aes(z, CVPred, colour= fold)) +
+  geom_smooth(method = "lm", formula = y ~ x) + 
+  geom_line()
+
+fold1 <- sample_frac(asdf, size = 0.2)
+fold2 <- sample_frac(asdf, size = 0.2)
+
+?seq_len
 
 ##### a bunch more with leaps, but not useful for now. It was exploratory before deciding on a supervised backwards stepwise
 #not looking at this any more
@@ -6702,6 +7063,7 @@ m.a.2.model.sum <- m.a.u4k.simple.ncor.model.lm %>%
   transmute("Independent variables" = `Independent variables` %>% gsub("^NPRI_", "NPRI.", .) %>%
             gsub("tot_", "total ", .) %>%
             gsub("d_", "dist. to ", .) %>%
+            gsub("ldist. to ", "ld ", .) %>%
             gsub("^I", "", .) %>%
             gsub("2)", "2", .) %>%
             gsub("nox", "NOx", .) %>%
@@ -6713,10 +7075,15 @@ write.csv(m.a.2.model.sum, "Paper Tables/m.a.2.model.sum.csv")
 #here's extra stuff about models to put into tables. Doesn't fit very nice into data.frame.
 #no interactions
 c(glance(m.a.u4k.simple.ncor.model.lm)[1:2], RMSE = sqrt(glance(m.a.u4k.simple.ncor.model.lm)[10]/nrow(filter(m.a.data.stan, bc_conc < 4000))), MaxCookD = max(cooks.distance(m.a.u4k.simple.ncor.model.lm)))
-m.a.u4k.simple.ncor.model.caret
+m.a.simple.sum.stats <- data.frame("MTL.A.Main.Effects", glance(m.a.u4k.simple.ncor.model.lm)[1], glance(m.a.u4k.simple.ncor.model.lm)[2], RMSE = sqrt(glance(m.a.u4k.simple.ncor.model.lm)[10]/nrow(filter(m.a.data.stan, bc_conc < 4000))), MaxCookD = max(cooks.distance(m.a.u4k.simple.ncor.model.lm)), LOOCV_RMSE = m.a.u4k.simple.ncor.model.caret$results[3], LOOCV_R2 = m.a.u4k.simple.ncor.model.caret$results[2])
+colnames(m.a.simple.sum.stats) <- c("Model", "R2", "Adj_R2", "RMSE", "Max_CookD", "LOOCV_R2", "LOOCV_RMSE")
+
 #final with interactions
 c(glance(m.a.u4k.final.model.lm)[1:2], RMSE = sqrt(glance(m.a.u4k.final.model.lm)[10]/nrow(filter(m.a.data.stan, bc_conc < 4000))), MaxCookD = max(cooks.distance(m.a.u4k.final.model.lm)))
 m.a.u4k.final.model.caret
+
+m.a.final.int.sum.stats <- data.frame("MTL.A.Intx.Sqr", glance(m.a.u4k.final.model.lm)[1], glance(m.a.u4k.final.model.lm)[2], RMSE = sqrt(glance(m.a.u4k.final.model.lm)[10]/nrow(filter(m.a.data.stan, bc_conc < 4000))), MaxCookD = max(cooks.distance(m.a.u4k.final.model.lm)), LOOCV_RMSE = m.a.u4k.final.model.caret$results[3], LOOCV_R2 = m.a.u4k.final.model.caret$results[2])
+colnames(m.a.final.int.sum.stats) <- c("Model", "R2", "Adj_R2", "RMSE", "Max_CookD", "LOOCV_R2", "LOOCV_RMSE")
 #just to confirm the by hand is correct. 
 RMSE(filter(m.a.data.stan, bc_conc < 4000)$bc_conc, predict(m.a.u4k.final.model.lm))
 #it is. 
@@ -6749,17 +7116,20 @@ write.csv(t.s.2.model.sum, "Paper Tables/t.s.2.model.sum.csv")
 
 #here's extra stuff about models to put into tables. Doesn't fit very nice into data.frame.
 #no interactions
-c(glance(t.s.u10k.simple.8vars.ncor.model.lm)[1:2], RMSE = sqrt(glance(t.s.u10k.simple.8vars.ncor.model.lm)[10]/nrow(filter(t.s.data.stan, bc_conc < 4000))), MaxCookD = max(cooks.distance(t.s.u10k.simple.8vars.ncor.model.lm)))
-t.s.u10k.simple.8vars.ncor.model.caret
+
+t.s.simple.sum.stats <- data.frame("TO.S.Main.Effects", glance(t.s.u10k.simple.8vars.ncor.model.lm)[1], glance(t.s.u10k.simple.8vars.ncor.model.lm)[2], RMSE = sqrt(glance(t.s.u10k.simple.8vars.ncor.model.lm)[10]/nrow(filter(t.s.data.stan, bc_conc < 10000))), MaxCookD = max(cooks.distance(t.s.u10k.simple.8vars.ncor.model.lm)), LOOCV_RMSE = t.s.u10k.simple.8vars.ncor.model.caret$results[3], LOOCV_R2 = t.s.u10k.simple.8vars.ncor.model.caret$results[2])
+colnames(t.s.simple.sum.stats) <- c("Model", "R2", "Adj_R2", "RMSE", "Max_CookD", "LOOCV_R2", "LOOCV_RMSE")
+
+
 #final with interactions
 c(glance(t.s.u10k.final.model.lm)[1:2], RMSE = sqrt(glance(t.s.u10k.final.model.lm)[10]/nrow(filter(t.s.data.stan, bc_conc < 4000))), MaxCookD = max(cooks.distance(t.s.u10k.final.model.lm)))
 t.s.u10k.final.model.caret
-#just to confirm the by hand is correct. 
 
-#then for each add R2, Adj R2, LOOCV R2, RMSE, LOOCV RMSE?, BIC?, highest Cooks D, Moran's I
-#mutate(RMSE = sqrt(deviance/sum(!is.na(m.a.data.stan$bc_conc))))
+t.s.final.int.sum.stats <- data.frame("TO.S.Intx.Sqr", glance(t.s.u10k.final.model.lm)[1], glance(t.s.u10k.final.model.lm)[2], RMSE = sqrt(glance(t.s.u10k.final.model.lm)[10]/nrow(filter(t.s.data.stan, bc_conc < 10000))), MaxCookD = max(cooks.distance(t.s.u10k.final.model.lm)), LOOCV_RMSE = t.s.u10k.final.model.caret$results[3], LOOCV_R2 = t.s.u10k.final.model.caret$results[2])
+colnames(t.s.final.int.sum.stats) <- c("Model", "R2", "Adj_R2", "RMSE", "Max_CookD", "LOOCV_R2", "LOOCV_RMSE")
 
-
+four.model.sum.stats <- rbind.data.frame(m.a.simple.sum.stats, m.a.final.int.sum.stats, t.s.simple.sum.stats, t.s.final.int.sum.stats)
+write.csv(four.model.sum.stats, "Paper Tables/four.model.sum.stats.csv")
 
 
 #####City Map Plots + Moran's I#####
@@ -6798,24 +7168,28 @@ head(map.m.a.data.stan)
 
 #after watching some datacamp, I'll do it like this:
 #oh, and save the map data to a subfolder to keep it neat
+#got a better shapefile from Susannah
 mtl.tmp.try <- tempfile()
-download.file("http://donnees.ville.montreal.qc.ca/dataset/00bd85eb-23aa-4669-8f1b-ba9a000e3dd8/resource/62f7ce10-36ce-4bbd-b419-8f0a10d3b280/download/limadmin-shp.zip", destfile = mtl.tmp.try)
+download.file("http://www12.statcan.gc.ca/census-recensement/2011/geo/bound-limit/files-fichiers/gcd_000b11a_e.zip", destfile = mtl.tmp.try)
 unzip(mtl.tmp.try, exdir = "Map Data/")
-mtl.sf <- st_read("Map Data/LIMADMIN.shp")
+canada.sf <- st_read("Map Data/gcd_000b11a_e.shp")
 #note that these are unprojected. If I want to do calculations, I should use a projected 
 
-# In this case my outcome is bc_conc
+mtl.sf <- canada.sf %>% dplyr::filter(CDUID=="2466")
+
 m.a.bc.obs <- ggplot() + 
   geom_sf(data = mtl.sf) +
+  ggtitle("Montreal Mean Annual Observed BC Concentrations") + 
   geom_point(data = map.m.a.data.stan, aes(x = longitude.x, y = latitude.x, color = bc_conc, size=10)) +
   scale_color_gradient(low = "blue", high = "red", name = "Observed BC (ng/m3)") + 
   theme_minimal() +
   guides(color = guide_legend(order=1, rev=T),
          size = F)
 
-# Plot of predicted ROS values
+# Plot of predicted BC conc values
 m.a.bc.pred <- ggplot() + 
   geom_sf(data = mtl.sf) +
+  ggtitle("Montreal Mean Annual Predicted BC Concentrations") + 
   geom_point(data = map.m.a.data.stan, aes(x = longitude.x, y = latitude.x, color = f.m.pred, size=10)) +
   scale_color_gradient(low="blue", high="red", name = "Predicted BC (ng/m3)") + 
   theme_minimal() +
@@ -6823,30 +7197,93 @@ m.a.bc.pred <- ggplot() +
          size = F)
 #I get an intermitent error about not finding an edge. It might be due to a font being disabled, but I can't get that solution to work.
 #Another solution is just to force the graphics window to open first using quartz. Good enough for now.
-#quartz makes it harder to save the file. I may have solved this by restoring standard fonts. 
-quartz()
+#quartz makes it harder to save the file. I may have solved this by restoring standard fonts. I didn't.
+#quartz()
 grid.arrange(m.a.bc.obs, m.a.bc.pred) # Arrange the 2 plots on the same field
 
 # Map the difference between predicted and observed
 map.m.a.data.stan$f.m.diffs <- map.m.a.data.stan$bc_conc - map.m.a.data.stan$f.m.pred
 m.a.bc.diffs <- ggplot() + 
   geom_sf(data = mtl.sf) +
-  geom_point(data = map.m.a.data.stan, aes(x = longitude.x, y = latitude.x, color = bc_conc, size = abs(f.m.diffs^2))) +
+  ggtitle("Montreal Mean Annual BC Concentration Prediction Errors", subtitle = "+ is overprediction and - is underprediction, errors greater than 400 labelled") +
+  geom_point(data = map.m.a.data.stan, aes(x = longitude.x, y = latitude.x, color = bc_conc, size = abs(f.m.diffs)), alpha = 0.7) +
+  scale_color_gradient(low="blue", high="red", name = "Obs BC") + 
+  scale_size_area(max_size = 10, name = "Prediction Error") + 
+  geom_text(data = map.m.a.data.stan, aes(x = longitude.x, y = latitude.x, label = ifelse(f.m.diffs > 0, "-", "+")),hjust=0.5, vjust=0.5) + 
+  geom_label_repel(data = filter(map.m.a.data.stan, abs(f.m.diffs) > 400), aes(x = longitude.x, y = latitude.x, label = abs(round(f.m.diffs, 0))), vjust = -15, hjust = 10, box.padding = 4, segment.alpha = 0.5) + 
+  theme_minimal() +
+  guides(color = guide_legend(order=1, rev=T),
+         size = guide_legend(order=1, rev=T))
+m.a.bc.diffs
+
+filter(map.m.a.data.stan, Filter_ID == "MTL_space_8")
+#it's the 495 point
+
+#make it so the color tells you BC concentration that was measured there and size of circle tells you how much the prediction was off. Look for a pattern
+
+#Try seeing the MTL points that are missing
+
+m.s.bc.map <- ggplot() + 
+  geom_sf(data = mtl.sf) +
+  ggtitle("Montreal Mean Summer BC Concentrations") +
+  geom_point(data = m.s.data, aes(x = longitude.x, y = latitude.x, color = bc_conc)) +
+  scale_color_gradient(low="blue", high="red", name = "BC Conc") +
+  theme_minimal() +
+  guides(color = guide_legend(order=1, rev=T),
+         size = F)
+
+m.w.bc.map <- ggplot() + 
+  geom_sf(data = mtl.sf) +
+  ggtitle("Montreal Mean Winter BC Concnetrations") +
+  geom_point(data = m.w.data, aes(x = longitude.x, y = latitude.x, color = bc_conc)) +
+  scale_color_gradient(low="blue", high="red", name = "BC Conc") + 
+  theme_minimal() +
+  guides(color = guide_legend(order=1, rev=T),
+         size = F)
+
+m.a.bc.missing <- ggplot() + 
+  geom_sf(data = mtl.sf) +
+  ggtitle("Montreal Annual Missing and Trimmed Data") +
+  geom_point(data = filter(m.a.data, is.na(a.bc_conc) | a.bc_conc > 4000), aes(x = longitude.x, y = latitude.x, color = a.bc_conc)) +
   scale_color_gradient(low="blue", high="red", name = "Obs BC") + 
   theme_minimal() +
   guides(color = guide_legend(order=1, rev=T),
          size = F)
-m.a.bc.diffs
-#make it so the color tells you BC concentration that was measured there and size of circle tells you how much the prediction was off. Look for a pattern
 
+ggplot() + 
+  geom_sf(data = mtl.sf) +
+  geom_point(data = filter(m.a.data, is.na(a.bc_conc)), aes(x = m.a.data$longitude.x, y = m.a.data$latitude.x)) +
+  geom_label_repel(data = filter(m.a.data, is.na(a.bc_conc)), aes(x = m.a.data$longitude.x, y = m.a.data$latitude.x, label = m.a.data$f.id.summer)) +
+  theme_minimal() +
+  guides(color = guide_legend(order=1, rev=T),
+         size = F)
 
+m.a.bc.miss <- ggplot() + 
+  geom_sf(data = mtl.sf) +
+  ggtitle("Montreal Mean Annual") +
+  geom_point(data = m.a.data, aes(x = longitude.x, y = latitude.x, color = a.bc_conc)) +
+  scale_color_gradient(low="green", high="red", name = "BC Conc") + 
+  theme_minimal() +
+  guides(color = guide_legend(order=1, rev=T),
+         size = F)
 
+m.a.bc.na <- ggplot() + 
+  geom_sf(data = mtl.sf) +
+  geom_point(data = filter(m.a.data, is.na(a.bc_conc)), aes(x = longitude.x, y = latitude.x)) +
+  theme_minimal() +
+  guides(color = guide_legend(order=1, rev=T),
+         size = F)
+
+grid.arrange(m.s.bc.map, m.w.bc.map, m.a.bc.missing, m.a.bc.diffs, nrow = 2 )
+
+describe(m.a.data$a.bc_conc)
+describe()
 
 map.t.s.data.stan <- dplyr::filter(t.s.data.stan, bc_conc < 10000 & !is.na(bc_conc))
 colnames(map.t.s.data.stan)[1] <- "Filter_ID"    #needed to change column name to match for the full join. 
 #lat and long are already in, no need to join. 
 #map.m.a.data.stan <- dplyr::left_join(map.m.a.data.stan, dplyr::select(mtl.to.latlong.elevation, Filter_ID, latitude.x, longitude.x), by = "Filter_ID")
-
+str(t.s.data.stan)
 describe(t.s.data.stan$bc_conc)
 describe(map.t.s.data.stan$bc_conc)
 predict(t.s.u10k.final.model.lm)
@@ -6857,10 +7294,16 @@ map.t.s.data.stan$Filter_ID <- as.factor(map.t.s.data.stan$Filter_ID)
 str(map.t.s.data.stan)
 head(map.t.s.data.stan)
 
+
+
+
+#download the shapefile from internet. I found it just by cruising city of Toronto's website. Most cities have shapefiles.
 to.tmp.try <- tempfile()
 download.file("http://opendata.toronto.ca/gcc/community_planning_boundary_wgs84.zip", destfile = to.tmp.try)
-unzip(to.tmp.try, exdir = "Map Data/")
-to.sf <- st_read("Map Data/COMMUNITY_PLANNING_BNDRY_WGS84.shp")
+unzip(to.tmp.try, exdir = "Map Data/") #just my subfolder of wd
+#import it
+to.st <- st_read("Map Data/COMMUNITY_PLANNING_BNDRY_WGS84.shp") #st is a type of dataframe or something. 
+
 
 
 ggplot() + geom_point(data = map.t.s.data.stan, aes(x = longitude.x, y = latitude.x, color = bc_conc, size=10))
@@ -6873,46 +7316,49 @@ extent(mtl.shp)
 #so the TO shape file is on some other coordinate system or smoe other scalling. 
 str(map.t.s.data.stan)
 t.s.bc.obs <- ggplot() + 
-  geom_sf(data = to.sf) +
+  geom_sf(data = to.st) +
   geom_point(data = map.t.s.data.stan, aes(x = longitude.x, y = latitude.x, color = bc_conc, size=10)) +
   scale_color_gradient(low = "blue", high = "red", name = "Observed BC (ng/m3)") + 
   theme_minimal() +
   guides(color = guide_legend(order=1, rev=T),
          size = F)
 
-# Plot of predicted ROS values
+# Plot of predicted BC conc values
 t.s.bc.pred <- ggplot() + 
-  geom_sf(data = to.sf) +
+  geom_sf(data = to.st) +
   geom_point(data = map.t.s.data.stan, aes(x = longitude.x, y = latitude.x, color = f.m.pred, size=10)) +
   scale_color_gradient(low="blue", high="red", name = "Predicted BC (ng/m3)") + 
   theme_minimal() +
   guides(color = guide_legend(order=1, rev=T),
          size = F)
-
+?ggtitle
 # Map the difference between predicted and observed
 map.t.s.data.stan$f.m.diffs <- map.t.s.data.stan$bc_conc - map.t.s.data.stan$f.m.pred
 t.s.bc.diffs <- ggplot() + 
-  geom_sf(data = to.sf) +
-  geom_point(data = map.t.s.data.stan, aes(x = longitude.x, y = latitude.x, color = bc_conc, size = abs(f.m.diffs^2))) +
+  geom_sf(data = to.st) +
+  ggtitle("Toronto Summer BC Concentration Prediction Errors", subtitle = "+ is overprediction and - is underprediction, errors greater than 1400 labelled") +
+  geom_point(data = map.t.s.data.stan, aes(x = longitude.x, y = latitude.x, color = bc_conc, size = abs(f.m.diffs)), alpha = 0.7) +
   scale_color_gradient(low="blue", high="red", name = "Obs BC") + 
+  scale_size_area(max_size = 10, name = "Prediction Error") + 
+  geom_text(data = map.t.s.data.stan, aes(x = longitude.x, y = latitude.x, label = ifelse(f.m.diffs > 0, "-", "+")),hjust=0.5, vjust=0.5) + 
+  geom_label_repel(data = filter(map.t.s.data.stan, abs(f.m.diffs) > 1400), aes(x = longitude.x, y = latitude.x, label = paste(Filter_ID, ", ", round(abs(f.m.diffs), 0), sep = "")), vjust = -25, box.padding = 3.5, segment.alpha = 0.5) + 
   theme_minimal() +
   guides(color = guide_legend(order=1, rev=T),
-         size = F)
+         size = guide_legend(order=1, rev=T))
 t.s.bc.diffs
+
 #make it so the color tells you BC concentration that was measured there and size of circle tells you how much the prediction was off. Look for a pattern
 
-library(spdep)
-library(lctools)
-library(MASS)
-library(geosphere)
-library(ape)
+hist(map.t.s.data.stan$f.m.diffs)
+hist(map.t.s.data.stan$f.m.diffs/(map.t.s.data.stan$bc_conc))
 
 1/as.matrix(distm(cbind(map.t.s.data.stan$longitude.x, map.t.s.data.stan$latitude.x), fun=distVincentyEllipsoid))
 
 #Moran's I
 #Montreal
-
+# http://desktop.arcgis.com/en/arcmap/10.3/tools/spatial-statistics-toolbox/h-how-spatial-autocorrelation-moran-s-i-spatial-st.htm
 # https://cran.r-project.org/web/packages/ape/vignettes/MoranI.pdf
+# http://r.789695.n4.nabble.com/troubles-performing-Moran-I-test-td878799.html
 ?dist
 #ape was made for evolution. I probably shouldn't use it. It is for a different application/ 
 #create a matrix of the inverse distances between each point. distm is from geosphere package.
@@ -6982,16 +7428,18 @@ moran.test(map.m.a.data.stan$bc_conc,
 moran.plot(map.m.a.data.stan$bc_conc, 
            nb2listw(dnearneigh(m.a.coords, d1 = 0, d2 = 1000, longlat = TRUE)))
 
-m.a.nearest.6 <- dnearneigh(m.a.coords, d1 = 0, d2 = 1000, longlat = TRUE)
+m.a.nearest.6 <- knearneigh(m.a.coords, k = 6, RANN = F)
 m.a.nearest.6.nb <- knn2nb(m.a.nearest.6)
 plot(m.a.nearest.6.nb, m.a.coords)
 ?nb2listw
 m.a.spatial.weights.6 <- nb2listw(m.a.nearest.6)
 lm.morantest(m.a.u4k.final.model.lm, m.a.spatial.weights.6)
 #doesn't look like there are spatial dependencies with the 6 nearest neighbours. Keep in mind that I have not weighted the distances, and that montreal has a bottleneck
+tail(map.t.s.data.stan)
+map.t.s.data.stan <- map.t.s.data.stan[-63,]
 
 t.s.coords <- cbind(map.t.s.data.stan$longitude.x, map.t.s.data.stan$latitude.x)
-t.s.nearest.6 <- knearneigh(t.s.coords, k = 1, RANN = F)
+t.s.nearest.6 <- knearneigh(t.s.coords, k = 6, RANN = F)
 t.s.nearest.6.nb <- knn2nb(t.s.nearest.6)
 plot(t.s.nearest.6.nb, t.s.coords)
 t.s.spatial.weights.6 <- nb2listw(t.s.nearest.6.nb)
@@ -7042,16 +7490,25 @@ plot(st_geometry(to.data.stan.sf.buffer))
 #montreal
 ggplot(data = filter(map.m.a.data.stan, bc_conc < 4000), aes(x = f.m.pred, y = bc_conc)) + 
   geom_point() +
-  stat_smooth(method="lm") + 
   stat_fit_glance(method = "lm",
                   method.args = list(formula = y ~ x),
                   aes(label = sprintf('r^2~"="~%.3f',
-                                      stat(r.squared))), parse = TRUE)
-  geom_abline(slope = 0.527, intercept = 0) +
-  geom_abline(slope = 0.657, intercept = 0) +
+                                      stat(r.squared))), parse = TRUE) +
   geom_abline(slope = 1, intercept = 0) +
-  xlim(0, 3000) + ylim(0, 3000)
-  
+  xlim(0, 3000) + ylim(0, 3000) +
+  labs(title = "Montreal Annual Observed vs Predicted BC Concentrations (ng/m3)", x = "Predicted", y = "Observed") + 
+  theme(
+    # Remove panel border
+    panel.border = element_blank(),  
+    # Remove panel grid lines
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    # Remove panel background
+    panel.background = element_blank(),
+    # Add axis line
+    axis.line = element_line(colour = "grey")
+  )
+
 nrow(map.m.a.data.stan)
 max(map.m.a.data.stan$bc_conc)
 nrow(map.t.s.data.stan)
@@ -7061,15 +7518,26 @@ nrow(map.t.s.data.stan)
 #toronto
 ggplot(data = filter(map.t.s.data.stan, bc_conc < 10000), aes(x = f.m.pred, y = bc_conc)) + 
   geom_point() +
-  stat_smooth(method="lm") + 
   stat_fit_glance(method = "lm",
                   method.args = list(formula = y ~ x),
                   aes(label = sprintf('r^2~"="~%.3f',
-                                      stat(r.squared))), parse = TRUE)
-  geom_abline(slope = 0.527, intercept = 0) +
-  geom_abline(slope = 0.657, intercept = 0) +
+                                      stat(r.squared))), parse = TRUE) +
   geom_abline(slope = 1, intercept = 0) +
-  xlim(0, 3000) + ylim(0, 3000)
+  xlim(0, 6000) + ylim(0, 6000) +
+  labs(title = "Toronto Summer Observed vs Predicted BC Concentrations (ng/m3)", x = "Predicted", y = "Observed") + 
+  theme(
+    # Remove panel border
+    panel.border = element_blank(),  
+    # Remove panel grid lines
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    # Remove panel background
+    panel.background = element_blank(),
+    # Add axis line
+    axis.line = element_line(colour = "grey")
+  ) +
+  geom_label_repel(data = filter(map.t.s.data.stan, abs(f.m.diffs) > 1400), aes(x = f.m.pred, y = bc_conc, label = Filter_ID), hjust = -1, box.padding = 2)
+  
 #notice the four points that are 4 of the 5 lowest observed, notice how they have predicted values that are too high. What's going on with those points?
 map.t.s.data.stan %>%
   arrange(f.m.diffs) %>%
@@ -7077,6 +7545,37 @@ map.t.s.data.stan %>%
   dplyr::select(Filter_ID, bc_conc, f.m.pred, f.m.diffs, Nox_50m, com_750m, resid_100m, ind_1000m, d_airport, d_NPRI_PM, latitude.x, longitude.x) %>%
   formattable()
 #nothing jumps out at me from those spots. They are all pretty regular looking. Maybe they weren't as close to the intersections as most of the others?
+
+
+
+
+### Trying Some Machine Learning Algorithms and Caret Stack #####
+
+
+# Load libraries
+library(mlbench)
+library(caret)
+library(caretEnsemble)
+
+# create submodels
+SE.control <- trainControl(method="repeatedcv", number=10, repeats=3, savePredictions=TRUE, classProbs=FALSE)
+algorithmList <- c('lda', 'rpart', 'glm', 'knn', 'svmRadial')
+algorithmList <- c('rf', 'knn')
+set.seed(88)
+
+ml.t.s.data.stan <- t.s.data.stan[, c(-1,-3,-4,-5,-6)]
+colnames(ml.t.s.data.stan)
+colnames(t.s.data.stan)
+describe(ml.t.s.data.stan$bc_conc)
+
+
+SE.models <- caretList(bc_conc ~., data = filter(ml.t.s.data.stan, bc_conc < 10000), trControl = SE.control, methodList = algorithmList)
+results <- resamples(SE.models)
+summary(SE.models)
+dotplot(SE.models)
+#something's not quite working. I took this from a classification example, so that might be part of it. Also, I just jumped in and tried to stack an ensemble. I should probably just try a basic ML algorithm first, then start getting cray crya
+#next, try to learn how to do a simple algorithm.
+
 
 # Predictor Counts ######
 
@@ -7191,11 +7690,49 @@ formattable(as.data.frame(uni.vars))
 
 # Working Notes ########
 
+#1 Aug notes:
+  #added notes to 31 July
+  #something ain't right with the t.s.data or t.s.data.stan or t.s.data.long, elevation or lats and longs or something. 
+    #fixed
+  #something seems wrong with the MTL simple model or something. 
+    #i think I had something wrong before. Now it's correct. 
+  #Made an RMD, upload it to dropbox
+  #written up to discussion. Have tables semi done (waiting for final numbers to polish)
+    #questions in the word doc, review them
+    #write up the main effects model? I like it for straight forward interpretation
+    #how much do I discuss?
+    #review the limitations?
+    #Marianne review/write the ArcGIS viriables?
+  #Left to do:
+    #rerun with updated NOx
+      #how do I handle different NOx? Make a model with the same selected variables, but fit it and they will have slightly different coefficients? Predictions? R2? LOOCV? 
+    #send models to Marriane?
+
+
+#31 July Notes:
+#thoughts on prepping for Monday meeting:  
+  #make an rmd file? 
+    #A couple of plots
+    #semi complete tables of models. I don't want to polish too much before I get final data
+  #talk about Moran's I of residuals
+  #talk about Cook's D
+    #I could run it on all suspicious outlier univariates, instead of saying "visual inspection"
+  #ask about communities health initiative. 
+
+
 #26 July notes:
 #are there two TO sites with the exact same lat and long? When I make the inverse distance matrix, I get 1 cell = Inf, I think it's cell 63x32
+  #started investigation in "Outlier Inspection". Found the sites, they have same lat/long and GIS varables, but different measurements of bc. Sent an email to Susannah
+    #Susannah said they are two sensors at the same spot. One of the sensors is better, so take that one and filter out the other
+    #use the TO_space_18 and filter out the 97. FYI - they are 43 ng/m3 away from each other. 
 #Montreal has a pretty janky spread. Look into it. See what coords are not on the map. Ask if that's legit. 
+  #the ones not on the map are legit not on the map. MTL S has a nice spread, then M.W takes some away, then some NAs take away, and then 2 of 3 over 4k are there.
+  #asked Susannah about this
+    #she didn't comment......so I guess it's okay
 # I think I have some sort of Moran's I., though it is not wrt to the regression and residuals. Montreal has spatial correlation (ie: downtown) and Toronto doesn't
+  #HOP! I think I got it. There's a lm.moranstest for testing the residuals. Check with Susannah about this. 
 #Clean up the paper, what I have already. The Intro is solid, but the methods still have old language in it (talkinga bout 5 models)
+  #clean to where I'm at. Maybe add a bit more to results. 
 
 
 #5 July notes:

@@ -33,6 +33,8 @@ library(car)
 library(DAAG)
 library(boot)
 library(ggpubr)
+library(rms)
+library(ggrepel)
 
 #xlsx was working but now it doesn't. It says it need rJava to work. I tried to get rJava to work (~5hrs of internet wormhole trial and error). I made some progress (changed the type of errors I got), but it's still not working. 
 #the rJava bug has been fixed for now, but the underlying Java 12 problem has not been solved, so other packages that require Java do not work. 
@@ -288,7 +290,7 @@ nrow(m.s.data.all)
 describe(m.s.data.all$good_data)
 #gooooooood looking mr. cooking
 describe(m.s.data$d_woodburn)
-#there are 9 missing d_woodburn for Mtl Summer
+
 
 #and for toronto. Recall that it is mtl winter that is different, so 26 and 27 are still the correct columns. 
 head(t.s.outcomes)
@@ -430,7 +432,8 @@ m.a.data <- dplyr::select(m.a.data, -2)
 head(m.a.data)
 
 
-m.a.data <- mutate(m.a.data, a.bc_conc = (w.bc_conc + s.bc_conc)/2, d.bc = round((w.bc_conc - s.bc_conc)/w.bc_conc*100, 0), a.uvpm_conc = (w.uvpm_conc + s.uvpm_conc)/2, d.uvpm = round((w.uvpm_conc - s.uvpm_conc)/w.uvpm_conc*100, 0))
+m.a.data <- mutate(m.a.data, a.bc_conc = (w.bc_conc + s.bc_conc)/2, d.bc = round((w.bc_conc - s.bc_conc)/w.bc_conc*100, 0), 
+                   a.uvpm_conc = (w.uvpm_conc + s.uvpm_conc)/2, d.uvpm = round((w.uvpm_conc - s.uvpm_conc)/w.uvpm_conc*100, 0))
 # I added d. columns that are the % change in concentration between summer and winter. There are some really big values. 
 #can take away those when making the "long" data frame for regressions. 
 
@@ -448,6 +451,33 @@ colnames(m.s.v.w.change)[c(8,10)] <- c("BC % Change", "UVPM % Change")
 formattable(m.s.v.w.change)
 
 write.csv(m.s.v.w.change, "m.s.v.w.change.csv")
+
+# Adding the Updated and Historical NOx emmisions ####
+#read them in and order them by date. The order isn't super important, ust personal preference for now. 
+t.nox.hist <- dplyr::select(read.xls("NOx Data for Toronto and Montreal.xlsx", sheet = 2, na.strings = "#N/A"), Filter_ID, contains("03"), contains("08"), contains("18"))
+m.nox.hist <- dplyr::select(read.xls("NOx Data for Toronto and Montreal.xlsx", sheet = 3, na.strings = "#N/A"), Filter_ID, contains("03"), contains("08"), contains("18"))
+#make the names similar to exisitng ones. Not completely changing the NOx columns names because I'd like to still be able to quickly ID them. Maybe change later. Change filter ID name for teh join 
+colnames(t.nox.hist) <- colnames(t.nox.hist) %>% gsub("[:.:]", "_", .) %>% gsub("SUM", "TOT", .) %>% gsub("Filter_ID", "f.id", .)
+colnames(m.nox.hist) <- colnames(m.nox.hist) %>% gsub("[:.:]", "_", .) %>% gsub("SUM", "TOT", .) %>% gsub("Filter_ID", "f.id.summer", .)
+str(t.nox.hist)
+str(m.nox.hist)
+
+colnames(t.nox.hist)
+colnames(m.nox.hist)
+#now bring the data into the m.a and t.s. 
+#The standardizing code later on pulls out latitude and longitude by calling columns 165 and 166
+#that means I can just slap these determinants at the end of the data frames here. Not an excellent practice, but good enough for now
+colnames(t.s.data)
+nrow(t.s.data)
+nrow(t.nox.hist)
+colnames(m.a.data)
+nrow(m.a.data)
+nrow(m.nox.hist)
+m.a.data$f.id.summer
+
+#ONE WAY CODE!!!!!!
+t.s.data <- left_join(t.s.data, t.nox.hist, by = "f.id")
+m.a.data <- left_join(m.a.data, m.nox.hist, by = "f.id.summer")
 
 #Outlier Inspection #####
 
@@ -928,9 +958,73 @@ hist(m.a.data$a.bc_conc, breaks = 100)
 hist(m.a.data$a.bc_conc, breaks = 100, xlim = c(0, 7000))
 
 
+#let's look at the new NOx data. I ran them through the regressions and something didn't look right. 
+hist(m.a.data$TOT18_750)
+hist(m.a.data.stan$TOT18_750)
+hist(m.a.data$tot_Nox_750m)
+
+ggplot(data = m.a.data.stan) + geom_histogram(aes(x = TOT18_750), fill = "red", alpha = 0.3) + 
+  geom_histogram(aes(x = TOT08_750), fill = "blue", alpha = 0.3) + 
+  geom_histogram(aes(x = tot_Nox_750m), color = "black", alpha = 0.3)
+
+ggplot(data = m.a.data) + geom_histogram(aes(x = TOT18_750), fill = "red", alpha = 0.5) + 
+  geom_histogram(aes(x = TOT08_750), fill = "blue", alpha = 0.3) + 
+  geom_histogram(aes(x = tot_Nox_750m), color = "black", alpha = 0.3)
+#when standardized, they become virtually the same. Why? Is it because there is a similar factor applied to all the data? The source is the same year and then an emmissions correctional factor is applie. 
+
+m.a.data.stan$bc_conc
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), formula = bc_conc ~ TOT18_750))
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), formula = bc_conc ~ TOT08_750))
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), formula = bc_conc ~ TOT03_750))
+summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), formula = bc_conc ~ tot_Nox_750m))
+
+describe(m.a.data.stan$TOT18_750)
+describe(m.a.data.stan$TOT08_750)
+describe(m.a.data.stan$TOT03_750)
+describe(m.a.data.stan$bc_conc)
+describe(long.m.a.data.stan$bc_conc)
+
+ggplot(data = m.a.data.stan, aes(y = bc_conc)) + geom_point(aes(x = TOT18_750), color = "red", alpha = 0.3) + 
+  geom_point(aes(x = TOT08_750), color = "blue", alpha = 0.3) + 
+  geom_point(aes(x = tot_Nox_750m), color = "black", alpha = 0.3)
 
 
+filter(long.m.a.data.stan, !grepl('TOT18_750 | tot_Nox_750m', variable))
 
+describe(filter(long.m.a.data.stan, variable == 'TOT18_750' | variable == 'tot_Nox_750m'))
+describe(filter(long.m.a.data.stan,  bc_conc < 4000 && variable == 'TOT18_750' | variable == 'tot_Nox_750m'))
+filter(long.m.a.data.stan,  bc_conc < 4000) %>%
+  filter(variable == 'TOT18_750' | variable == 'tot_Nox_750m') %>%
+  describe()
+
+long.m.a.data.stan$variable
+
+ggplot(data = filter(long.m.a.data.stan,  bc_conc < 4000) %>%
+         filter(variable == 'TOT18_750' | variable == 'tot_Nox_750m' | variable == 'TOT08_750' | variable == 'TOT03_750'), 
+       aes(x = value, y = bc_conc, color = variable)) +
+  ggtitle("Montreal Annual Tot NOx 750m vs BC") +
+  geom_point() +
+  stat_smooth(method="loess") + 
+  stat_smooth(method="lm", linetype = "dashed", se = FALSE) + 
+  stat_fit_glance(method = "lm",
+                  method.args = list(formula = y ~ x),
+                  aes(label = sprintf('r^2~"="~%.3f~~italic(P)~"="~%.2f',
+                                      stat(r.squared), stat(p.value))), parse = TRUE) +
+  scale_color_discrete(name = "NOx Year", labels = c("Original", "2003", "2008", "2018"))
+
+ggplot(data = filter(long.m.a.data.stan,  bc_conc < 4000) %>%
+         filter(variable == 'TOT18_750' | variable == 'tot_Nox_750m' | variable == 'TOT08_750' | variable == 'TOT03_750'), 
+       aes(x = value, color = variable)) +
+  ggtitle("Montreal Annual Tot NOx 750m") +
+  geom_histogram(fill = "white", position = "dodge") +
+  scale_color_discrete(name = "NOx Year", labels = c("Original", "2003", "2008", "2018"))
+
+install
+
+#The 3 years are virtually identical, are they?
+m.a.data.stan$TOT03_750 - m.a.data.stan$TOT08_750
+m.a.data$TOT03_750 - m.a.data$TOT08_750
+#the stans are. Let's look at the non-stan. It might be that the 
 
 #TO Histograms ####
 #take a quick gander at some of the distributions
@@ -1180,6 +1274,7 @@ str(m.w.data.stan)
 ####MTL Annual
 colnames(m.a.data)[c(1:12)]
 colnames(m.a.data)[c(-1:-10)]
+colnames(m.a.data)[c(171:172)]
 summary(scale(m.a.data[ , c(-1:-10)]))
 ncol(m.a.data)
 m.a.data.stan <- data.frame(m.a.data[ , 1:10], m.a.data[ , 171:172], scale(m.a.data[ , c(-1:-10, -171, -172)]))
@@ -1189,6 +1284,8 @@ summary(m.a.data.stan)
 
 apply(m.a.data.stan, 2, sd)
 #can see all the sds are 1, nnnnnnnoice!
+#for now, there are several of the new NOx variables that have SD = 0, 
+describe(t.s.data$AV18_50)
 
 describe(m.a.data$NPRI_PM_300m)
 describe(m.a.data$NPRI_PM_200m)
@@ -1204,22 +1301,38 @@ str(m.a.data.stan)
 head(m.a.data.stan[,1:12])
 m.a.data.stan <- dplyr::select(m.a.data.stan, 1:2, 7, 9, 11, 12, 13:ncol(m.a.data.stan))
 
+#So I learned that the NAs in the new NOx data are actually zeros. Need to change all the NAs to zeros. I'm doing it here right after standardization. 
+na.zero <- function (x) {
+  x[is.na(x)] <- 0
+  return(x)
+}
 
+m.a.data.stan[,164:NCOL(m.a.data.stan)] <- apply(m.a.data.stan[,164:NCOL(m.a.data.stan)], 2, na.zero)
+
+describe(m.a.data.stan[,1:15])
+#the bc_conc missing is still missing
 
 ###TO
 #time to standardize it
 #this is how to standardize just part of the data frame
 colnames(t.s.data)[c(-1,-2,-3,-4)]
 summary(scale(t.s.data[ , c(-1,-2,-3,-4, -157, -158)]))
-ncol(t.s.data)
+
+#lat and long are from the difference to the difference + 1 because t.nox.hist has an extra column used in the eft_join function (f.id)
+colnames(t.s.data)[ncol(t.s.data) - ncol(t.nox.hist)]
+colnames(t.s.data)[ncol(t.s.data) - ncol(t.nox.hist) + 1]
+colnames(t.s.data)[ncol(t.s.data)]
+
 #t.s.data got updated with new IVs, so different number of rows. 
-t.s.data.stan <- data.frame(t.s.data[ , 1:4], t.s.data[ , (NCOL(t.s.data)-1):NCOL(t.s.data)], scale(t.s.data[ , c(-1,-2,-3,-4, -(NCOL(t.s.data)-1), -NCOL(t.s.data))]))
+t.s.data.stan <- data.frame(t.s.data[ , 1:4], t.s.data[ , (ncol(t.s.data) - ncol(t.nox.hist)):(ncol(t.s.data) - ncol(t.nox.hist) + 1 )], 
+                            scale(t.s.data[ , c(-1,-2,-3,-4, -(ncol(t.s.data) - ncol(t.nox.hist)), -(ncol(t.s.data) - ncol(t.nox.hist) +1) ) ]))
 summary(t.s.data.stan)
 (NCOL(t.s.data)-1)
 #can see in the summary that all the means are zero
 apply(t.s.data.stan, 2, sd)
 #can see all the sds are 1, nnnnnnnoice!
 #.....except rail_50m, what's going on there?! I think it's because there are so few observations. In pooled it gets better. 
+#SD na's for the columns that have NAs in them 
 
 #same for TO
 which.max(t.s.data$bc_conc)
@@ -1957,8 +2070,7 @@ nrow(subset(m.a.bc.uni.reg, P.Value <= 0.05))
 #with 3 new obs, it's 6 and 32, d_woodburn doesn't show up
 
 formattable(m.a.u4k.bc.uni.reg)
-formattable(subset(m.a.u4k.bc.uni.reg, P.Value <= 0.05))
-
+formattable(subset(m.a.u4k.bc.uni.reg, `P Value` <= 0.05))
 
 
 
@@ -4608,9 +4720,6 @@ summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ tot_Nox_750m 
 summary(bic.glm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ build_1000m + bus_stop_200m + traffic_1000m + tot_Nox_750m + d_NPRI_Nox + I(d_airport^2) + d_railline + I(d_shore^2), glm.family = gaussian))
 #it picks the same ones we do. 
 
-
-
-
 summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ ind_750m))
 summary(lm(data = filter(m.a.data.stan, bc_conc < 4000 & ind_750m < 2), bc_conc ~ ind_750m))
 summary(lm(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ ind_1000m))
@@ -6068,13 +6177,32 @@ summary(m.a.u4k.simple.ncor.model.lm)
 m.a.u4k.final.model.lm <- lm(data = dplyr::filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) + 
              I(d_shore^2) + tot_Nox_750m:d_railline + d_railline:d_shore)
 summary(m.a.u4k.final.model.lm)
-
-
 #much better like this, R2 = 0.657
 #and they are all p < 0.05
 #Notice how it takes some of the linear and some of the nono-linear, whichever is best in the whole model. 
 #Notice it takes d_railline only in interactions, not by itself.
+predict(m.a.u4k.final.model.lm)
+cor(dplyr::filter(m.a.data.stan, bc_conc < 4000)$bc_conc, predict(m.a.u4k.final.model.lm))^2
+#so that works for the R2 being the cor
+1 - sum(
+  (
+    filter(m.a.data.stan, bc_conc < 4000)$bc_conc - predict(m.a.u4k.final.model.lm)
+  )^2
+)/
+  sum(
+    (
+      filter(m.a.data.stan, bc_conc < 4000)$bc_conc - mean(filter(m.a.data.stan, bc_conc < 4000)$bc_conc)
+    )^2
+  )
+#so does that. All three are good. 
 
+#make a smaller csv file with final model variable for Scott to use
+colnames(m.a.data.stan)
+m.a.data.stan %>%
+  dplyr::select(f.id.summer, bc_conc, latitude.x, longitude.x, build_1000m, bus_stop_200m,  
+                tot_Nox_750m, d_NPRI_Nox, d_airport, d_railline, d_shore) %>%
+  filter(bc_conc < 4000) %>%
+  write.csv(file = "Cleaned Data csv/Montreal_Final_BC_Model_Variables.csv")
 
 
 
@@ -6105,7 +6233,50 @@ plot(cooks.distance(m.a.u4k.final.model.lm))
 plot(cooks.distance(m.a.u4k.simple.ncor.model.lm))
 #also good, nothing over 0.2. Montreal Annual is doing well. 
 
+#use the RMS package to do a bootstrap CV
+#the simple model with bootstrap
+m.a.u4k.simple.boot <- ols(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ build_1000m + bus_stop_200m +  
+                             tot_Nox_750m + d_NPRI_Nox + d_airport + d_railline + d_shore,
+            x = TRUE, y = TRUE)
+validate(m.a.u4k.simple.boot, method = "boot", B = 5000)
 
+#rms package does not allow for interactions without main effects. So I get an error.
+m.a.u4k.final.boot <- ols(data = filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + 
+                            d_airport + I(tot_Nox_750m^2) + I(d_shore^2) + tot_Nox_750m:d_railline + d_railline:d_shore,
+                           x = TRUE, y = TRUE)
+
+#I can trick it into letting me do it.
+#Frank Harrell says: "you would be making a magical assumption about the origin (zero point/centering) of the variables"
+tricky.mtl <- m.a.data.stan
+tricky.mtl$totnox750sqr <- m.a.data.stan$tot_Nox_750m^2
+tricky.mtl$dshoresqr <- m.a.data.stan$d_shore^2
+tricky.mtl$NoxRail <- m.a.data.stan$tot_Nox_750m * m.a.data.stan$d_railline
+tricky.mtl$RailShore <- m.a.data.stan$d_railline * m.a.data.stan$d_shore
+
+tricky.mtl.ols <- ols(data = filter(tricky.mtl, bc_conc < 4000), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + 
+      d_airport + totnox750sqr + dshoresqr + NoxRail + RailShore,
+    x = TRUE, y = TRUE)
+validate(tricky.mtl.ols, method = "boot", B = 5000)
+#this gives me the test, optimism and index corrected R2 and the slope
+describe(filter(tricky.mlt, bc_conc < 4000))$bc_conc
+
+#should check corr of all these new interaction terms
+cor(dplyr::select(filter(tricky.mtl, bc_conc < 4000), tot_Nox_750m, d_NPRI_Nox,
+                    d_airport, totnox750sqr, dshoresqr, NoxRail, RailShore), method = "spearman")
+#we're good. 
+
+#try adding mains Note had to trick in the squared terms. Not sure why RMS doesn't see them.
+m.a.u4k.final.boot.addmains <- ols(data = filter(tricky.mtl, bc_conc < 4000), bc_conc ~ d_NPRI_Nox + d_airport + tot_Nox_750m + 
+                                     totnox750sqr + d_shore + dshoresqr + tot_Nox_750m*d_railline + d_railline*d_shore,
+                                   x = TRUE, y = TRUE)
+validate(m.a.u4k.final.boot.addmains, method = "boot", B = 5000)
+#just making sure they are giving the same thing. Making sure the trick worked.
+lm(data = filter(tricky.mtl, bc_conc < 4000), bc_conc ~ d_NPRI_Nox + d_airport + tot_Nox_750m + 
+     totnox750sqr + d_shore + I(d_shore^2) + tot_Nox_750m*d_railline + d_railline*d_shore)
+
+
+#Can do fold CV, but I'm not sure which R2 they are doing. 
+#the use the caret fold CV, 
 m.a.u4k.train.control <- trainControl(method = "LOOCV")
 
 m.a.u4k.simple.ncor.model.caret <- train(bc_conc ~ build_1000m + mjrd_1000m + bus_stop_200m + traffic_1000m + 
@@ -6148,37 +6319,36 @@ attr(m.a.cvlm, 'ms')
 summary(glm(data = dplyr::filter(m.a.data.stan, bc_conc < 4000), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) + I(d_shore^2) + 
       tot_Nox_750m:d_railline + d_railline:d_shore, family = gaussian))
 
-
 # MTL A. 5-Fold Plot ######
 #randomly split the data
 m.a.data.stan.5fold <- filter(m.a.data.stan, bc_conc < 4000) %>%
   dplyr::mutate(index = 1:n()) %>%
   sample_n(n(), replace = FALSE) %>%
-  dplyr::mutate(fold = as.factor(c(rep(1:5, n() %/% 5), 1:(n() %% 5)))) %>%
-  arrange(fold)
-describe(m.a.data.stan.5fold$fold)
-str(m.a.data.stan.5fold$fold)
+  dplyr::mutate(Fold = as.factor(c(rep(1:5, n() %/% 5), 1:(n() %% 5)))) %>%
+  arrange(Fold)
+describe(m.a.data.stan.5fold$Fold)
+str(m.a.data.stan.5fold$Fold)
 split(asdf, c(1,5,2))
 ?split
 
 m.a.u4k.final.model.lm
 #make an lm for each fold. The fold.lm is based on all the data except that fold and then that fold will be used to test later
-m.a.fold1.lm <- lm(data = filter(m.a.data.stan.5fold, fold != 1), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) +
+m.a.fold1.lm <- lm(data = filter(m.a.data.stan.5fold, Fold != 1), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) +
                    I(d_shore^2) + tot_Nox_750m:d_railline + d_railline:d_shore)
-m.a.fold2.lm <- lm(data = filter(m.a.data.stan.5fold, fold != 2), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) +
+m.a.fold2.lm <- lm(data = filter(m.a.data.stan.5fold, Fold != 2), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) +
                      I(d_shore^2) + tot_Nox_750m:d_railline + d_railline:d_shore)
-m.a.fold3.lm <- lm(data = filter(m.a.data.stan.5fold, fold != 3), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) +
+m.a.fold3.lm <- lm(data = filter(m.a.data.stan.5fold, Fold != 3), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) +
                      I(d_shore^2) + tot_Nox_750m:d_railline + d_railline:d_shore)
-m.a.fold4.lm <- lm(data = filter(m.a.data.stan.5fold, fold != 4), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) +
+m.a.fold4.lm <- lm(data = filter(m.a.data.stan.5fold, Fold != 4), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) +
                      I(d_shore^2) + tot_Nox_750m:d_railline + d_railline:d_shore)
-m.a.fold5.lm <- lm(data = filter(m.a.data.stan.5fold, fold != 5), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) +
+m.a.fold5.lm <- lm(data = filter(m.a.data.stan.5fold, Fold != 5), bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) +
                      I(d_shore^2) + tot_Nox_750m:d_railline + d_railline:d_shore)
 #create a CV prediction column. Use the fold data on the fold model.
-m.a.data.stan.5fold$CVPred <- c(predict(m.a.fold1.lm, filter(m.a.data.stan.5fold, fold ==1)), 
-                                     predict(m.a.fold2.lm, filter(m.a.data.stan.5fold, fold ==2)), 
-                                     predict(m.a.fold3.lm, filter(m.a.data.stan.5fold, fold ==3)),
-                                     predict(m.a.fold4.lm, filter(m.a.data.stan.5fold, fold ==4)), 
-                                     predict(m.a.fold5.lm, filter(m.a.data.stan.5fold, fold ==5))
+m.a.data.stan.5fold$CVPred <- c(predict(m.a.fold1.lm, filter(m.a.data.stan.5fold, Fold ==1)), 
+                                     predict(m.a.fold2.lm, filter(m.a.data.stan.5fold, Fold ==2)), 
+                                     predict(m.a.fold3.lm, filter(m.a.data.stan.5fold, Fold ==3)),
+                                     predict(m.a.fold4.lm, filter(m.a.data.stan.5fold, Fold ==4)), 
+                                     predict(m.a.fold5.lm, filter(m.a.data.stan.5fold, Fold ==5))
                                      )
 summary(m.a.fold3.lm)
 #create a full data model prediction column
@@ -6220,12 +6390,20 @@ var(filter(m.a.data.stan.5fold, fold !=1)$bc_conc)*42
   )
 var(filter(m.a.data.stan.5fold, fold == 1)$bc_conc)*10
 
-m.a.CV.r2 <- data.frame(fold = 1:5, r2 = rep(0, 5))
+m.a.CV.r2 <- data.frame(Fold = 1:5, r2 = rep(0, 5))
 for(i in 1:max(as.integer(m.a.data.stan.5fold$Fold))) {
   m.a.CV.r2[i,2] <- 1 - sum((filter(m.a.data.stan.5fold, Fold == i)$bc_conc - filter(m.a.data.stan.5fold, Fold == i)$CVPred)^2)/
     sum((filter(m.a.data.stan.5fold, Fold == i)$bc_conc - mean(filter(m.a.data.stan.5fold, Fold == i)$bc_conc))^2)
   print(m.a.CV.r2[i,])
 }
+mean(m.a.CV.r2$r2)
+m.a.CV.r2.cor <- data.frame(Fold = 1:5, r2 = rep(0, 5))
+for(i in 1:max(as.integer(m.a.data.stan.5fold$Fold))) {
+  m.a.CV.r2.cor[i,2] <- cor(filter(m.a.data.stan.5fold, Fold == i)$bc_conc, filter(m.a.data.stan.5fold, Fold == i)$CVPred)^2
+    print(m.a.CV.r2.cor[i,])
+}
+mean(m.a.CV.r2.cor$r2)
+
 #..something ain't right
 #turns out, it can be a negative number. I have a hard time believing it, but I think it's true. 
 #What that means is that an average (ie: flat line) is a better pretdictor than the model. How?   
@@ -6255,22 +6433,58 @@ ggplot() +
     # Add axis line
     axis.line = element_line(colour = "grey")
   ) +
-  geom_text(data = m.a.CV.r2, aes(x = 2000, y = c(1000, 900, 800, 700, 600), label = sprintf('Fold~%.3f~italic(R)^2~"="~%.3f', stat(m.a.CV.r2$fold), stat(m.a.CV.r2$r2))), parse = TRUE)
+  geom_text(data = m.a.CV.r2, aes(x = 2000, y = c(1000, 900, 800, 700, 600), label = sprintf('Fold~%.3f~italic(R)^2~"="~%.3f', stat(m.a.CV.r2$Fold), stat(m.a.CV.r2$r2))), parse = TRUE)
 
 #that is just a single 5-fold for visualization
 #we have the computational resources to do repeated
-train(bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) + I(d_shore^2) + 
+m.a.5fold.10rep.caret <- train(bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) + I(d_shore^2) + 
         tot_Nox_750m:d_railline + d_railline:d_shore,   # model to fit
       data = dplyr::filter(m.a.data.stan, bc_conc < 4000),                        
       trControl = trainControl(method="repeatedcv", number=5, repeats=10),              # folds
       method = "glm"                      # specifying regression model
-)
+      )
+#using caret gives a much higher R2 than my manual method. 
+m.a.5fold.10rep.caret$resample$Rsquared
+#okay, there can be many different R2. That feels better. That gives 50 R2, so for every fold repeated 10 times. 
+mean(m.a.5fold.10rep.caret$resample$Rsquared)
+sd(m.a.5fold.10rep.caret$resample$Rsquared)
+#but still, none went negative. I think carret calculates R2 using cor()
+defaultSummary(m.a.5fold.10rep.caret)
 
+#had trouble finding out how I can get the traditional R2 calculated. Found a way to do this here:
+#https://stackoverflow.com/questions/47240996/user-defined-summaryfunction-in-caret-logloss
+f1 <- function(data, lev = NULL, model = NULL) {
+  r2 <- 1 - sum((data$obs - data$pred)^2)/
+    sum((data$obs- mean(data$obs))^2)
+  names(r2) <- c('r2')
+  r2
+}
+
+train(bc_conc ~ tot_Nox_750m + d_NPRI_Nox + d_airport + I(tot_Nox_750m^2) + I(d_shore^2) + 
+        tot_Nox_750m:d_railline + d_railline:d_shore,   # model to fit
+      data = dplyr::filter(m.a.data.stan, bc_conc < 4000), metric = "r2",                        
+      trControl = trainControl(method = "repeatedcv", number = 5, repeats = 10, summaryFunction = f1),              # folds
+      method = "glm"                      # specifying regression model
+      )
+#soooooo, for some reason the R2 default is cor()^2 and it gives a much higher CV R2
+
+
+
+
+
+f1()
+defaultSummary()
+
+?tr
+?postResample()
+
+m.a.5fold.10rep.caret$resample
+m.a.5fold.10rep.caret$
   
-
-
-
-
+  
+  
+  
+  
 ######we could also use an algorithm to step to it for model selection. 
 ###this is dead for now. Not persuing it. 
 #from something I found online on how to do step(), you need to tell it the simplest and most complicated models you want it to look at
@@ -6380,6 +6594,13 @@ paste(t.s.u10k.final.model.vars[-1], collapse = ' + ')
 plot(to.u10k.regsubsets.out.8vars.ex, scale = "adjr2", main = "Adjusted R^2")
 
 
+#Scott was able to run the exhaustive search of 11 variables on his computer. 
+#Nox_50m, I(resid_100m^2), I(ind_1000m^2), I(d_NPRI_PM^2), build_200m:rail_1000m, com_750m:resid_100m, com_750m:ind_1000m, ind_1000m:rail_1000m, open_50m:d_NPRI_PM, Nox_50m:d_NPRI_PM, Nox_50m:rail_1000m 
+
+
+
+
+
 #so the three models are:
 #all candidates (after removing corr)
 t.s.u10k.simple.all.ncor.model.lm <- lm(data = dplyr::filter(t.s.data.stan, bc_conc < 10000), 
@@ -6387,11 +6608,18 @@ t.s.u10k.simple.all.ncor.model.lm <- lm(data = dplyr::filter(t.s.data.stan, bc_c
              d_NPRI_PM + d_airport + rail_1000m)
 summary(t.s.u10k.simple.all.ncor.model.lm)
 
-#down to 8 after backwars stepwise
+#down to 8 after backwards stepwise
 t.s.u10k.simple.8vars.ncor.model.lm <- lm(data = dplyr::filter(t.s.data.stan, bc_conc < 10000), 
            bc_conc ~ com_750m + resid_100m + ind_1000m + d_highway + inter_50m + Nox_50m + 
              d_NPRI_PM + d_airport)
 summary(t.s.u10k.simple.8vars.ncor.model.lm)
+
+t.s.u10k.11var.final.model.lm <- lm(data = dplyr::filter(t.s.data.stan, bc_conc < 10000), 
+                                     bc_conc ~ Nox_50m + I(resid_100m^2) + I(ind_1000m^2) + 
+                                       I(d_NPRI_PM^2) + build_200m:rail_1000m + com_750m:resid_100m + com_750m:ind_1000m + 
+                                       ind_1000m:rail_1000m + open_50m:d_NPRI_PM + Nox_50m:d_NPRI_PM + Nox_50m:rail_1000m) 
+
+summary(t.s.u10k.11var.final.model.lm)
 
 #interactions and squared from ex.
 t.s.u10k.final.model.lm <- lm(data = dplyr::filter(t.s.data.stan, bc_conc < 10000), 
@@ -6401,10 +6629,10 @@ summary(t.s.u10k.final.model.lm)
 
 
 #also look at Cook's D
-plot(cooks.distance(t.s.u10k.final.model.lm))
-text(cooks.distance(t.s.u10k.final.model.lm), labels = as.character(filter(t.s.data.stan, bc_conc < 10000)[,1]), pos = 4)
+plot(cooks.distance(t.s.u10k.11var.final.model.lm))
+text(cooks.distance(t.s.u10k.11var.final.model.lm), labels = as.character(filter(t.s.data.stan, bc_conc < 10000)[,1]), pos = 4)
 #two points up around 0.6, so less beautifull than Montreal Annual, but still pretty good because under 1?
-which.max(cooks.distance(t.s.u10k.final.model.lm))
+which.max(cooks.distance(t.s.u10k.11var.final.model.lm))
 #it's observations 23 and 26 that are th biggies. 
 filter(t.s.data.stan, f.id == "TO_space_127")
 
@@ -6422,6 +6650,18 @@ plot(cooks.distance(t.s.u10k.simple.all.ncor.model.lm))
 text(cooks.distance(t.s.u10k.simple.all.ncor.model.lm), labels = as.character(filter(t.s.data.stan, bc_conc < 10000)[,1]), pos = 4)
 #it's only TO_space_107 that is high, and it's less than 0.3
 #I think this is stronger evidencve that I don't need to worry about it. I don't think we have any overly influencial observations 
+
+
+# Create a csv with the only data that we need to do an exhaustive search. This is so there's a neat and tidy file for Scott
+colnames(t.s.data.stan)
+t.s.data.stan %>%
+  dplyr::select(f.id, bc_conc, latitude.x, longitude.x, build_200m, com_750m, resid_100m, 
+                ind_1000m, open_50m, d_highway, inter_50m, Nox_50m, d_NPRI_PM, d_airport, rail_1000m) %>%
+  filter(bc_conc < 10000) %>%
+  write.csv(file = "Cleaned Data csv/Toronto_Final_BC_Model_Variables.csv")
+
+
+
 
 #####TO Summer Cross Validation #######
 #quick hist of residuals, qq plots, and resids vs fitted
@@ -6448,6 +6688,92 @@ abline(h=0)
 #those four points, bad predictions. Other than that, the final model looks good. Better than the simple multis
 #those four points are TO_space_32, 91, 101, and 128
 
+
+
+com_750m + resid_100m + ind_1000m + d_highway + inter_50m + Nox_50m + 
+  d_NPRI_PM + d_airport
+#use the RMS package to do a bootstrap CV
+
+#the all non correlated variables simple model with bootstrap
+t.s.u10k.allvars.simple.boot <- ols(data = filter(t.s.data.stan, bc_conc < 10000), bc_conc ~ build_200m + com_750m + resid_100m + ind_1000m + 
+                                    open_50m + d_highway + inter_50m + Nox_50m + d_NPRI_PM + d_airport + rail_1000m,
+                                  x = TRUE, y = TRUE)
+validate(t.s.u10k.allvars.simple.boot, method = "boot", B = 5000)
+
+#the 8 variable simple model with bootstrap
+t.s.u10k.8vars.simple.boot <- ols(data = filter(t.s.data.stan, bc_conc < 10000), bc_conc ~ com_750m + resid_100m + ind_1000m + d_highway + 
+                              inter_50m + Nox_50m + d_NPRI_PM + d_airport,
+                           x = TRUE, y = TRUE)
+validate(t.s.u10k.8vars.simple.boot, method = "boot", B = 5000)
+
+#rms package does not allow for interactions without main effects. So I get an error.
+t.s.u10k.final.boot <- ols(data = filter(t.s.data.stan, bc_conc < 10000), bc_conc ~ Nox_50m + com_750m:resid_100m + com_750m:ind_1000m + 
+                            com_750m:d_airport + resid_100m:ind_1000m + resid_100m:d_NPRI_PM + ind_1000m:d_NPRI_PM + Nox_50m:d_NPRI_PM,
+                          x = TRUE, y = TRUE)
+
+t.s.u10k.11var.final.boot <- ols(data = filter(t.s.data.stan, bc_conc < 10000), bc_conc ~ Nox_50m + I(resid_100m^2) + I(ind_1000m^2) + 
+                                   I(d_NPRI_PM^2) + build_200m:rail_1000m + com_750m:resid_100m + com_750m:ind_1000m + 
+                                   ind_1000m:rail_1000m + open_50m:d_NPRI_PM + Nox_50m:d_NPRI_PM + Nox_50m:rail_1000m,
+                                 x = TRUE, y = TRUE)
+
+#rms package does not allow for interactions without main effects. So I get an error.
+t.s.u10k.final.boot.addmains <- ols(data = filter(t.s.data.stan, bc_conc < 10000), bc_conc ~ Nox_50m + com_750m*resid_100m + com_750m*ind_1000m + 
+                             com_750m*d_airport + resid_100m*ind_1000m + resid_100m*d_NPRI_PM + ind_1000m*d_NPRI_PM + Nox_50m*d_NPRI_PM,
+                           x = TRUE, y = TRUE)
+validate(t.s.u10k.final.boot.addmains, method = "boot", B = 5000)
+
+#I can trick it into letting me do it.
+#Frank Harrell says: "you would be making a magical assumption about the origin (zero point/centering) of the variables"
+tricky.to <- t.s.data.stan
+tricky.to$com750resid100 <- t.s.data.stan$com_750m * t.s.data.stan$resid_100m
+tricky.to$com750ind1000 <- t.s.data.stan$com_750m * t.s.data.stan$ind_1000m
+tricky.to$com750dairport <- t.s.data.stan$com_750m * t.s.data.stan$d_airport
+tricky.to$resid100ind1000 <- t.s.data.stan$resid_100m * t.s.data.stan$ind_1000m
+tricky.to$resid100dNPRIPM <- t.s.data.stan$resid_100m * t.s.data.stan$d_NPRI_PM
+tricky.to$ind1000dNPRIPM <- t.s.data.stan$ind_1000m * t.s.data.stan$d_NPRI_PM
+tricky.to$nox50dNPRIPM <- t.s.data.stan$Nox_50m * t.s.data.stan$d_NPRI_PM
+
+#extras for the 11 var model:
+tricky.to$resid100sqr <- t.s.data.stan$resid_100m * t.s.data.stan$resid_100m
+tricky.to$ind1000sqr <- t.s.data.stan$ind_1000m * t.s.data.stan$ind_1000m
+tricky.to$NPRIPMsqr <- t.s.data.stan$d_NPRI_PM * t.s.data.stan$d_NPRI_PM
+tricky.to$build200rail1000 <- t.s.data.stan$build_200m * t.s.data.stan$rail_1000m
+tricky.to$ind1000rail1000 <- t.s.data.stan$ind_1000m * t.s.data.stan$rail_1000m
+tricky.to$open50dNPRIPM <- t.s.data.stan$open_50m * t.s.data.stan$d_NPRI_PM
+tricky.to$Nox50rail1000 <- t.s.data.stan$Nox_50m * t.s.data.stan$rail_1000m
+
+
+tricky.11var.ols <- ols(data = filter(tricky.to, bc_conc < 10000), bc_conc ~ Nox_50m + resid100sqr + ind1000sqr + NPRIPMsqr + 
+                          build200rail1000 + com750resid100 + com750ind1000 + ind1000rail1000 + open50dNPRIPM + nox50dNPRIPM + Nox50rail1000,
+                        x = TRUE, y = TRUE)
+validate(tricky.11var.ols, method = "boot", B = 5000)                        
+confint(tricky.11var.ols)
+
+tricky.11var.ols.addmains <- ols(data = filter(tricky.to, bc_conc < 10000), bc_conc ~ Nox_50m + resid100sqr + ind1000sqr + NPRIPMsqr + 
+                          build200rail1000 + com750resid100 + com750ind1000 + ind1000rail1000 + open50dNPRIPM + nox50dNPRIPM + Nox50rail1000 +
+                            resid_100m + ind_1000m + d_NPRI_PM + build_200m + rail_1000m + com_750m + open_50m,
+                        x = TRUE, y = TRUE)
+validate(tricky.11var.ols.addmains, method = "boot", B = 5000)                        
+confint(tricky.11var.ols.addmains)
+
+tricky.to.ols <- ols(data = filter(tricky.to, bc_conc < 10000), bc_conc ~ Nox_50m + com750resid100 + 
+                       com750ind1000 + com750dairport + resid100ind1000 + resid100dNPRIPM + ind1000dNPRIPM + nox50dNPRIPM,
+                      x = TRUE, y = TRUE)
+validate(tricky.to.ols, method = "boot", B = 5000)
+#this gives me the test, optimism and index corrected R2 and the slope
+
+#should check corr of all these new interaction terms
+cor(dplyr::select(filter(tricky.to, bc_conc < 10000), Nox_50m, com750resid100, com750ind1000, com750dairport, resid100ind1000,
+                  resid100dNPRIPM, ind1000dNPRIPM, nox50dNPRIPM), method = "spearman")
+
+cor(dplyr::select(filter(tricky.to, bc_conc < 10000), Nox_50m, resid100sqr, ind1000sqr, NPRIPMsqr, 
+  build200rail1000, com750resid100, com750ind1000, ind1000rail1000, open50dNPRIPM, nox50dNPRIPM, Nox50rail1000), method = "spearman")
+#we're good. 
+
+
+
+
+#Using caret leave one out X fold CV
 t.s.u10k.train.control <- trainControl(method = "LOOCV")
 
 t.s.u10k.simple.all.ncor.model.caret <- train(bc_conc ~ build_200m + com_750m + resid_100m + ind_1000m + open_50m + d_highway + inter_50m + Nox_50m + 
@@ -6602,12 +6928,28 @@ ggplot() +
 t.s.5fold.10rep.CV.caret <- train(bc_conc ~ Nox_50m + com_750m:resid_100m + com_750m:ind_1000m + com_750m:d_airport + resid_100m:ind_1000m + 
         resid_100m:d_NPRI_PM + ind_1000m:d_NPRI_PM + Nox_50m:d_NPRI_PM,   # model to fit
       data = dplyr::filter(t.s.data.stan, bc_conc < 10000),                       
-      trControl = trainControl(method="repeatedcv", number=5, repeats=10),              # folds
+      trControl = trainControl(method="repeatedcv", number=10, repeats=10),              # folds
       method = "glm"                      # specifying regression model
-)
+      )
 
-sd(t.s.5fold.10rep.CV.caret$resample$Rsquared)
-?train
+
+train(bc_conc ~ Nox_50m + com_750m:resid_100m + com_750m:ind_1000m + com_750m:d_airport + resid_100m:ind_1000m + 
+        resid_100m:d_NPRI_PM + ind_1000m:d_NPRI_PM + Nox_50m:d_NPRI_PM,   # model to fit
+      data = dplyr::filter(t.s.data.stan, bc_conc < 10000), metric = "r2",                        
+      trControl = trainControl(method = "repeatedcv", number = 10, repeats = 10, summaryFunction = f1),              # folds
+      method = "glm"                      # specifying regression model
+      )
+#soooooo, for some reason the R2 default is cor()^2 and it gives a much higher CV R2
+
+#keep this on the back burner for now. I think that the traditional R2 is probably more correct (Paper on Cautionary Note about R2). 
+#Not sure how or why caret calculates R2 via cor. The RMSE seems legit (in between the final model and the LOOCV, which is where the default caret R2 lands tooo)
+    #maybe I am mistaking how to calculate R2 for CV. If so, then the plots would need their R2 changed. 
+    #maybe the RMSE of LOOCV is legit but the R2 is not. 
+  #cor()^2 allows for "recalibration" of the coefficients or something?
+
+
+
+
 
 #test code to see if I could make a data frame
 #just keeping in case I want to play around again
@@ -6645,7 +6987,7 @@ fold2 <- sample_frac(asdf, size = 0.2)
 
 ##### a bunch more with leaps, but not useful for now. It was exploratory before deciding on a supervised backwards stepwise
 #not looking at this any more
-
+?regsubsets
 #too slow with all in, some a(with lowest uni R2 are removed). Check before running. Make sure really.big = F before runniung, then consider changing to T
 to.u10k.regsubsets.out.9vars.ex <- regsubsets(bc_conc ~ (build_200m + com_750m + resid_100m + ind_1000m + open_50m + d_highway + 
                                                      inter_50m + Nox_50m + d_airport)^2 + 
@@ -7216,6 +7558,9 @@ m.a.bc.diffs <- ggplot() +
          size = guide_legend(order=1, rev=T))
 m.a.bc.diffs
 
+
+
+
 filter(map.m.a.data.stan, Filter_ID == "MTL_space_8")
 #it's the 495 point
 
@@ -7276,8 +7621,81 @@ m.a.bc.na <- ggplot() +
 
 grid.arrange(m.s.bc.map, m.w.bc.map, m.a.bc.missing, m.a.bc.diffs, nrow = 2 )
 
-describe(m.a.data$a.bc_conc)
-describe()
+
+#Now investigate that hole in the map to see what the distribution of predictors is like there. Diff 403 is the right latitude. 
+#A little too far east in the longitude. filter out the lats and longs. Do summary statistics and compare. 
+filter(map.m.a.data.stan, abs(f.m.diffs) > 400)
+MTL_space_130
+filter(map.m.a.data.stan, Filter_ID == "MTL_space_130")$latitude.x
+filter(map.m.a.data.stan, Filter_ID == "MTL_space_130")$longitude.x
+
+ggplot() + 
+  geom_sf(data = mtl.sf) +
+  ggtitle("All Montreal Points") +
+  geom_point(data = m.s.data, aes(x = longitude.x, y = latitude.x, color = bc_conc)) +
+  geom_hline(yintercept = 45.455) +
+  geom_vline(xintercept = -73.695)
+m.a.map.hole <- ggplot() + 
+  geom_sf(data = mtl.sf) +
+  ggtitle("Stinkin' Map-Hole") +
+  geom_point(data = map.m.a.data.stan, aes(x = longitude.x, y = latitude.x, color = bc_conc), alpha = 0.7) +
+  geom_hline(yintercept = 45.455) +
+  geom_vline(xintercept = -73.695)
+m.a.map.hole
+
+filter(m.a.data, latitude.x > 45.455)
+
+filter(m.s.data.all, latitude.x > 45.455 & abs(longitude.x) > 73.695) 
+library(table1)
+
+m.hole <- m.s.data.all
+m.hole$above <- ifelse(m.hole$latitude.x > 45.455, 1, 0)
+m.hole$left <- ifelse(abs(m.hole$longitude.x) > 73.695, 1, 0)
+m.hole$hole <- m.hole$above * m.hole$left
+sum(m.hole$hole, na.rm = T)
+str(m.hole$hole)
+m.hole$hole <- as.factor(m.hole$hole)
+filter(m.s.data.all, latitude.x > 45.455 & abs(longitude.x) > 73.695) 
+#okay, we've got 15 both ways. That means we have an indicator variable for being in the hole. 
+
+#now stratify by hole and compare
+table1(~ . | hole, dplyr::select(m.hole, - f.id))
+#bc is higher in hole, but there is a lot of bad data in there. Not surprising nor concerning. Also, this is summer measures. 
+#this is a lot of eyeball comparisons, just to a regression (basically t-tests) to see if smoething shows up
+lapply(dplyr::select(m.hole, build_1000m:ind_100m), function(x) wilcox.test(x ~ m.hole$hole))
+#of all those tests, take the ones with p < 0.05. For the number of tests, that's way too high of a p value, but I'm casting a wide net.
+#the only p value that was seriously low was d_port, which is what we would expect. 
+
+table1(~ . | hole, dplyr::select(m.hole, parks_1000m, parks_500m, parks_300m, gov_500m, gov_200m, com_50m, 
+                                 highway_1000m, road_50m, inter_1000m, inter_500m, inter_50m, d_NPRI_Nox, d_NPRI_PM, d_port, d_railline, 
+                                 pop_1000m, pop_500m, rail_1000m, hole))
+
+#summary notes, if one buffer was more and the other less, I don't talk about it. I don't talk about mean differences less than 2x 
+#hole has 2-3x less park, 10x more commercial_50, 
+#2x less highway, smaller # intersection at high buffer, 4x less rail
+#2x less people, 
+#hole is 2x further from Nox, port, railline, 
+
+
+
+
+
+
+lm(data = dplyr::select(m.hole, - f.id))
+
+
+
+
+
+
+
+
+
+m.s.data.all %>%
+  mutate_(above = if_else(latitude.x > 45.455, 1, 0))
+
+
+####Toronto Map and Moran's I####
 
 map.t.s.data.stan <- dplyr::filter(t.s.data.stan, bc_conc < 10000 & !is.na(bc_conc))
 colnames(map.t.s.data.stan)[1] <- "Filter_ID"    #needed to change column name to match for the full join. 

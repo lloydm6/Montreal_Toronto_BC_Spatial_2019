@@ -30,3 +30,5 @@ Incorporated and analyzed woodburn buffers. Started using leaps(). Limited succe
 Focused on MTL Annual and TO Summer. Have code for exhaustive search, paper table set ups, LOOCV, checks, and some maps. Just waiting for updated NOx data
 
 5-Fold CV Graphs. Waiting on updated NOx data. 
+
+Update 
